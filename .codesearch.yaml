@@ -1,0 +1,9 @@
+# .codesearch.yaml
+project: codesearch
+languages: [go]
+include: ["**/*.go"]
+exclude: ["vendor/**", "testdata/**"]
+qdrant_url: http://localhost:6334
+ollama_url: http://localhost:11434
+ollama_model: nomic-embed-text
+workers: 4
