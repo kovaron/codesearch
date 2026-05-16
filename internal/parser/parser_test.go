@@ -132,6 +132,36 @@ func TestJavaParser_Symbols(t *testing.T) {
 	}
 }
 
+func TestFallbackParser_SmallFile(t *testing.T) {
+	src := []byte(`{"key": "value"}`)
+	p := &parser.FallbackParser{}
+	chunks, err := p.Parse(src, "json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chunks) != 1 {
+		t.Fatalf("expected 1 chunk for small file, got %d", len(chunks))
+	}
+	if chunks[0].Text != string(src) {
+		t.Errorf("chunk text mismatch")
+	}
+	if chunks[0].NodeType != "file" {
+		t.Errorf("NodeType = %q, want %q", chunks[0].NodeType, "file")
+	}
+}
+
+func TestFallbackParser_LargeFileSkipped(t *testing.T) {
+	src := make([]byte, 9*1024) // 9KB > 8KB threshold
+	p := &parser.FallbackParser{}
+	chunks, err := p.Parse(src, "binary")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chunks) != 0 {
+		t.Errorf("expected 0 chunks for large file, got %d", len(chunks))
+	}
+}
+
 func chunkNames(chunks []parser.Chunk) []string {
 	var names []string
 	for _, c := range chunks {
