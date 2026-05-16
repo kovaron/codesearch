@@ -84,6 +84,30 @@ func Foo() int {
 	}
 }
 
+func TestTypeScriptParser_Symbols(t *testing.T) {
+	src, err := os.ReadFile("../../testdata/fixtures/sample.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	p := &parser.TypeScriptParser{}
+	chunks, err := p.Parse(src, "typescript")
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	names := make(map[string]bool)
+	for _, c := range chunks {
+		names[c.Name] = true
+	}
+
+	for _, want := range []string{"greet", "UserService", "getUser", "deleteUser", "formatEmail"} {
+		if !names[want] {
+			t.Errorf("missing symbol %q; got %v", want, chunkNames(chunks))
+		}
+	}
+}
+
 func chunkNames(chunks []parser.Chunk) []string {
 	var names []string
 	for _, c := range chunks {
