@@ -53,7 +53,8 @@ func (idx *Indexer) DeleteFile(ctx context.Context, fp string) error {
 	return idx.store.DeleteByFile(ctx, fp)
 }
 
-func languageForExt(filename string) string {
+// LanguageFor returns the language string for a given filename.
+func LanguageFor(filename string) string {
 	switch filepath.Ext(filename) {
 	case ".go":
 		return "go"
@@ -66,9 +67,4 @@ func languageForExt(filename string) string {
 	default:
 		return "unknown"
 	}
-}
-
-// LanguageFor returns the language string for a given filename.
-func LanguageFor(filename string) string {
-	return languageForExt(filename)
 }

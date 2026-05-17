@@ -23,7 +23,7 @@ func Load(dir string) (*Config, error) {
 	path := filepath.Join(dir, ".codesearch.yaml")
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("no .codesearch.yaml found in %s — run codesearch init", dir)
+		return nil, fmt.Errorf("no .codesearch.yaml found in %s (run codesearch init): %w", dir, err)
 	}
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {

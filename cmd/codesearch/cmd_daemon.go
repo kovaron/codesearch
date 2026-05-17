@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
+	"net"
+	"net/url"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -62,7 +64,10 @@ func newDaemonCmd() *cobra.Command {
 			_ = st.WriteHeartbeat(ctx)
 
 			handler := func(path string, deleted bool) {
-				rel, _ := filepath.Rel(dir, path)
+				rel, err := filepath.Rel(dir, path)
+				if err != nil {
+					rel = path
+				}
 				if deleted {
 					log.Printf("delete %s", rel)
 					if err := idx.DeleteFile(ctx, path); err != nil {
@@ -91,18 +96,17 @@ func newDaemonCmd() *cobra.Command {
 
 // parseQdrantURL extracts host and gRPC port from a URL like http://localhost:6334
 func parseQdrantURL(rawURL string) (string, int) {
-	// Default
-	host, port := "localhost", 6334
-	// Simple split — full URL parsing not needed for typical configs
-	var h string
-	var p int
-	if n, _ := fmt.Sscanf(rawURL, "http://%s", &h); n == 1 {
-		// h is "localhost:6334"
-		fmt.Sscanf(h, "%[^:]:%d", &host, &port)
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Host == "" {
+		return "localhost", 6334
 	}
-	if port == 0 {
+	host, portStr, err := net.SplitHostPort(u.Host)
+	if err != nil {
+		return u.Host, 6334
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil || port == 0 {
 		port = 6334
 	}
-	_ = p
 	return host, port
 }

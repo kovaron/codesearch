@@ -75,13 +75,13 @@ func registerTools(s *server.MCPServer, st store.Store, emb embedder.Embedder) {
 			mcp.WithNumber("limit", mcp.Description("Max results (default 200)")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			filepath, err := req.RequireString("filepath")
+			fp, err := req.RequireString("filepath")
 			if err != nil {
 				return nil, fmt.Errorf("list_symbols: %w", err)
 			}
 			limit := req.GetInt("limit", 200)
 
-			results, err := st.ListByPath(ctx, filepath, limit)
+			results, err := st.ListByPath(ctx, fp, limit)
 			if err != nil {
 				return nil, fmt.Errorf("list_symbols: %w", err)
 			}
@@ -98,7 +98,7 @@ func registerTools(s *server.MCPServer, st store.Store, emb embedder.Embedder) {
 			mcp.WithString("name", mcp.Required(), mcp.Description("Symbol name")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			filepath, err := req.RequireString("filepath")
+			fp, err := req.RequireString("filepath")
 			if err != nil {
 				return nil, fmt.Errorf("get_chunk: %w", err)
 			}
@@ -107,7 +107,7 @@ func registerTools(s *server.MCPServer, st store.Store, emb embedder.Embedder) {
 				return nil, fmt.Errorf("get_chunk: %w", err)
 			}
 
-			result, err := st.GetByName(ctx, filepath, name)
+			result, err := st.GetByName(ctx, fp, name)
 			if err != nil {
 				return nil, fmt.Errorf("get_chunk: %w", err)
 			}

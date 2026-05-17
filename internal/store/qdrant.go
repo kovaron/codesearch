@@ -62,11 +62,11 @@ func (s *QdrantStore) ensureCollection(ctx context.Context) error {
 	})
 }
 
-// chunkID computes a deterministic uint64 from filepath, node_type, and start_byte.
+// chunkID computes a deterministic uint64 from path, node_type, and start_byte.
 // If the result collides with the reserved heartbeat ID (0), bump to 1.
-func chunkID(filepath, nodeType string, startByte int) uint64 {
+func chunkID(path, nodeType string, startByte int) uint64 {
 	h := sha256.New()
-	h.Write([]byte(filepath))
+	h.Write([]byte(path))
 	h.Write([]byte("|"))
 	h.Write([]byte(nodeType))
 	h.Write([]byte("|"))
@@ -82,10 +82,10 @@ func chunkID(filepath, nodeType string, startByte int) uint64 {
 }
 
 // Upsert stores a chunk with its vector in the collection.
-func (s *QdrantStore) Upsert(ctx context.Context, filepath string, chunk parser.Chunk, vector []float32) error {
-	id := chunkID(filepath, chunk.NodeType, chunk.StartByte)
+func (s *QdrantStore) Upsert(ctx context.Context, path string, chunk parser.Chunk, vector []float32) error {
+	id := chunkID(path, chunk.NodeType, chunk.StartByte)
 	payload := qdrant.NewValueMap(map[string]any{
-		"filepath":   filepath,
+		"filepath":   path,
 		"name":       chunk.Name,
 		"node_type":  chunk.NodeType,
 		"language":   chunk.Language,
@@ -106,15 +106,15 @@ func (s *QdrantStore) Upsert(ctx context.Context, filepath string, chunk parser.
 	return err
 }
 
-// DeleteByFile removes all points with filepath == filepath.
-func (s *QdrantStore) DeleteByFile(ctx context.Context, filepath string) error {
+// DeleteByFile removes all points with filepath == path.
+func (s *QdrantStore) DeleteByFile(ctx context.Context, path string) error {
 	_, err := s.client.Delete(ctx, &qdrant.DeletePoints{
 		CollectionName: s.collection,
 		Points: &qdrant.PointsSelector{
 			PointsSelectorOneOf: &qdrant.PointsSelector_Filter{
 				Filter: &qdrant.Filter{
 					Must: []*qdrant.Condition{
-						qdrant.NewMatchKeyword("filepath", filepath),
+						qdrant.NewMatchKeyword("filepath", path),
 					},
 				},
 			},
@@ -195,15 +195,15 @@ func (s *QdrantStore) ListByPath(ctx context.Context, pathPrefix string, limit i
 	return retrievedPointsToResults(points), nil
 }
 
-// GetByName returns the single point matching (filepath, name), or nil if not found.
-func (s *QdrantStore) GetByName(ctx context.Context, filepath, name string) (*SearchResult, error) {
+// GetByName returns the single point matching (path, name), or nil if not found.
+func (s *QdrantStore) GetByName(ctx context.Context, path, name string) (*SearchResult, error) {
 	points, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
 		CollectionName: s.collection,
 		Limit:          qdrant.PtrOf(uint32(1)),
 		WithPayload:    qdrant.NewWithPayload(true),
 		Filter: &qdrant.Filter{
 			Must: []*qdrant.Condition{
-				qdrant.NewMatchKeyword("filepath", filepath),
+				qdrant.NewMatchKeyword("filepath", path),
 				qdrant.NewMatchKeyword("name", name),
 			},
 		},

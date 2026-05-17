@@ -19,17 +19,19 @@ type Manifest struct {
 }
 
 // Write creates a .csi archive at path with the given manifest and Qdrant snapshot bytes.
-func Write(path string, m Manifest, snapshot []byte) error {
+func Write(path string, m Manifest, snapshot []byte) (err error) {
 	f, err := os.Create(path)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() {
+		if cerr := f.Close(); err == nil {
+			err = cerr
+		}
+	}()
 
 	gz := gzip.NewWriter(f)
-	defer gz.Close()
 	tw := tar.NewWriter(gz)
-	defer tw.Close()
 
 	manifestBytes, err := json.Marshal(m)
 	if err != nil {
@@ -40,6 +42,12 @@ func Write(path string, m Manifest, snapshot []byte) error {
 	}
 	if err := writeEntry(tw, "qdrant-snapshot.bin", snapshot); err != nil {
 		return err
+	}
+	if err := tw.Close(); err != nil {
+		return fmt.Errorf("close tar: %w", err)
+	}
+	if err := gz.Close(); err != nil {
+		return fmt.Errorf("close gzip: %w", err)
 	}
 	return nil
 }

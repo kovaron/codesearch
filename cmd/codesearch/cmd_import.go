@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/kovaron/codesearch/internal/config"
 	"github.com/kovaron/codesearch/pkg/archive"
@@ -22,7 +21,7 @@ func newImportCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			restURL := strings.Replace(cfg.QdrantURL, "6334", "6333", 1)
+			restURL := restURLFor(cfg.QdrantURL)
 
 			m, snapBytes, err := archive.Read(inPath)
 			if err != nil {

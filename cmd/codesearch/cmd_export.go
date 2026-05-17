@@ -4,8 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
-	"strings"
+	"net/url"
 	"time"
 
 	"github.com/kovaron/codesearch/internal/config"
@@ -24,7 +25,7 @@ func newExportCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			restURL := strings.Replace(cfg.QdrantURL, "6334", "6333", 1)
+			restURL := restURLFor(cfg.QdrantURL)
 
 			// Create snapshot
 			resp, err := http.Post(restURL+"/collections/"+cfg.Project+"/snapshots", "application/json", nil)
@@ -64,4 +65,17 @@ func newExportCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+// restURLFor converts a gRPC Qdrant URL (port 6334) to its REST equivalent (port 6333).
+func restURLFor(grpcURL string) string {
+	u, err := url.Parse(grpcURL)
+	if err != nil || u.Host == "" {
+		return "http://localhost:6333"
+	}
+	host, _, err := net.SplitHostPort(u.Host)
+	if err != nil {
+		host = u.Host
+	}
+	return fmt.Sprintf("%s://%s:6333", u.Scheme, host)
 }

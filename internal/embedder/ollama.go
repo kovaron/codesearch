@@ -23,10 +23,13 @@ func NewOllama(baseURL, model string) *OllamaEmbedder {
 }
 
 func (o *OllamaEmbedder) Embed(ctx context.Context, text string) ([]float32, error) {
-	body, _ := json.Marshal(map[string]string{
+	body, err := json.Marshal(map[string]string{
 		"model": o.model,
 		"input": text,
 	})
+	if err != nil {
+		return nil, fmt.Errorf("ollama: marshal request: %w", err)
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, o.baseURL+"/api/embed", bytes.NewReader(body))
 	if err != nil {
 		return nil, err
