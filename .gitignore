@@ -1,0 +1,9 @@
+# Build output
+/codesearch
+
+# Local snapshots (export/import .csi archives)
+*.csi
+
+# Editor / OS cruft
+.DS_Store
+*.swp
