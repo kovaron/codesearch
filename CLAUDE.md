@@ -1,56 +1,83 @@
-# Way of Working
+# codesearch — project instructions for Claude
 
-Every task follows this strict workflow. Do not skip steps.
+A Go CLI that indexes codebases with tree-sitter + Ollama + Qdrant and exposes them to AI agents over MCP stdio. See `README.md` for user-facing docs and `docs/superpowers/specs/` + `docs/superpowers/plans/` for design + implementation history.
 
-## 1. Planning
+## Module
 
-- Always use the **brainstorming** superskill first for any creative/feature work
-- Then use the **writing-plans** superskill to create a detailed implementation plan
-- Get user approval on the plan before writing any code
+- Module path: `github.com/kovaron/codesearch`
+- Go version: 1.22+ (CI uses 1.26)
+- CGO required (tree-sitter grammars are C bindings)
 
-## 2. Development (Strict TDD)
+## Layout
 
-- Use the **test-driven-development** superskill for all implementation
-- Write tests FIRST, then implementation
-- Each logical task gets its own atomic commit (do not bundle unrelated changes)
-- Commit message should clearly describe what the task accomplishes
+```
+cmd/codesearch/         cobra root + 5 subcommands (init, daemon, mcp, export, import)
+internal/config/        YAML loader + validation
+internal/parser/        Parser interface + Go/TS/Java/fallback (tree-sitter)
+internal/embedder/      Embedder interface + Ollama HTTP client
+internal/store/         Store interface + Qdrant gRPC client
+internal/indexer/       Pipeline: parse → embed → upsert; also e2e_test.go
+internal/watcher/       fsnotify watcher + 200ms debouncer
+internal/mcp/           MCP stdio server + 5 tool handlers
+pkg/archive/            .csi gzip-tar format (export/import)
+testdata/fixtures/      sample.go, sample.ts, Sample.java (parser tests)
+docs/superpowers/       design spec + implementation plan + prereq notes
+```
 
-## 3. Formatting & Linting (after every change)
+## Commands
 
-- Run formatting and linting checks after every code change, not just at the end
-- Fix any issues immediately before moving on to the next task
-- Commands by project type:
-  - **Go projects**: `go fmt ./...`
-  - **pdp-cloudflare** (monorepo): `pnpm format:check` from monorepo root (`/Users/kovaron/projects/pdp-cloudflare`), fix with `pnpm format`
-  - **Other Node.js/TypeScript projects**: `pnpm run lint` or `pnpm run format` (check project scripts)
-- At the end, create ONE separate formatting/linting commit for any remaining changes:
-  - Commit message: `chore: format and lint`
+```bash
+# Build
+go build -o codesearch ./cmd/codesearch/
 
-## 4. Test Verification
+# Unit tests (no Docker)
+go test ./...
 
-- After all commits, run the full test suite for every affected project
-- Report whether test coverage has **increased, stayed the same, or decreased**
-- If coverage decreased: ask user to approve or request additional tests
-- If relevant, suggest items to exclude from measured coverage (e.g., generated code, test utilities)
+# Integration tests (testcontainers spins up Qdrant v1.13.0)
+go test -tags integration ./...
 
-## 5. Multi-Round Automated Review & PR Opening
+# Lint
+go vet ./...
+gofmt -l .
+```
 
-Use the **review-and-open-pr** skill (once available) or follow this manual sequence:
+Tests under `_test.go` with `//go:build integration` need Docker running. Plain unit tests run anywhere.
 
-### Review Loop (up to 5 rounds)
+## Conventions
 
-Each round consists of:
+- **Format + vet pass before every commit.** `go fmt ./...` and `go vet ./...` must be clean.
+- **Strict TDD for non-trivial changes** — failing test first, then implementation.
+- **No `_ = x` hacks.** Delete dead vars; check errors.
+- **Wrap errors with `%w`** when callers might need `errors.Is/As`.
+- **Avoid shadowing stdlib names** (`path`, `filepath`, `url`, etc.) — rename locals to `fp`, `u`, `path`, etc.
+- **Named constants for repeat magic numbers** — vector dim, heartbeat interval, timeouts. See `internal/embedder/ollama.go:NomicEmbedTextDim` for the pattern.
+- **Exported symbols carry doc comments** starting with the symbol name.
+- **Atomic commits.** One logical change per commit. Conventional Commits prefix (`feat:`, `fix:`, `refactor:`, `chore:`, `docs:`, `test:`).
 
-1. **CodeRabbit CLI review** — run `coderabbit` on the branch diff
-2. **Multi-agent review** — use **agent-team-review** superskill (parallel agents for correctness, conventions, contracts, security)
-3. **Deduplicate findings** — merge results from CodeRabbit and agents, remove duplicates (match on file + line range + category)
-4. **Fix findings** — auto-fix critical and important findings using **receiving-code-review** superskill; log minor findings for PR description
-5. **Simplify pass** — run **simplify** skill on the full PR diff (dead code, unnecessary abstractions, clarity improvements)
-6. **Re-review** — loop back to step 1
+## Adapt the spec when it doesn't compile
 
-The loop exits when:
-- No critical or important findings in a round, OR
-- 5 rounds reached (hard cap), OR
-- No new findings compared to previous round
+The implementation plan was written against approximate dependency APIs. Confirmed adaptations that future tasks should not rediscover:
 
-Fixing review comments and simplification may produce additional commits per round.
+- `github.com/smacker/go-tree-sitter/<lang>` exposes `<lang>.GetLanguage()` returning `*sitter.Language`. The plan's `sitter.NewLanguage(<lang>.Language())` does not compile.
+- `github.com/qdrant/go-client@v1.18` uses `qdrant.NewQuery(vec...)` for `QueryPoints.Query`, not `NewVectorInput`.
+- `testcontainers-go` `MappedPort` returns `network.Port`; use `int(p.Num())`, not `p.Int()`.
+- `mark3labs/mcp-go@v0.54` argument access: `req.RequireString("x")`, `req.GetString("x", "")`, `req.GetInt("x", 10)` — not `req.Params.Arguments["x"].(T)`.
+- Qdrant container image `v1.9.0` lacks the `Query` gRPC endpoint; use `v1.13.0`.
+
+When a new compile error reveals another mismatch, fix it and add to this list.
+
+## Prereqs for integration tests + local run
+
+- Docker daemon running
+- Qdrant: `docker run -d --name qdrant -p 6333:6333 -p 6334:6334 qdrant/qdrant:v1.13.0`
+- Ollama: `ollama serve` + `ollama pull nomic-embed-text`
+
+Health probes in `docs/superpowers/prereqs-task8.md`.
+
+## Vector dimension is locked at collection creation
+
+Changing `ollama_model` to a model with a different embedding dimension requires dropping the Qdrant collection (`DELETE /collections/<project>`) and re-indexing. The default `nomic-embed-text` is 768-dim; the constant lives in `internal/embedder/ollama.go`.
+
+## License
+
+Apache-2.0. Copyright 2026 Aron Kovacs. Section 4(b) of the license requires marking modified files; section 4(c)-(d) requires preserving the `NOTICE` file in derivatives. PR contributions are accepted under the same license.
