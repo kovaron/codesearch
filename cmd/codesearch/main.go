@@ -16,6 +16,8 @@ func main() {
 		newInitCmd(),
 		newDaemonCmd(),
 		newMCPCmd(),
+		newExportCmd(),
+		newImportCmd(),
 	)
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
