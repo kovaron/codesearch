@@ -77,10 +77,19 @@ func newDaemonCmd() *cobra.Command {
 					}
 					return
 				}
+				lang := indexer.LanguageFor(path)
+				if lang == "unknown" {
+					return
+				}
 				log.Printf("index %s", rel)
-				if err := idx.IndexFile(ctx, path, indexer.LanguageFor(path)); err != nil {
+				if err := idx.IndexFile(ctx, path, lang); err != nil {
 					log.Printf("index error: %v", err)
 				}
+			}
+
+			log.Printf("daemon: initial index of %s", dir)
+			if err := idx.WalkAndIndex(ctx, dir); err != nil {
+				log.Printf("initial walk error: %v", err)
 			}
 
 			w, err := watcher.New([]string{dir}, handler)
