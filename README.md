@@ -372,26 +372,73 @@ The agent calls `search_structural` with `query="HandleLogin"`.
 
 ## Export / Import
 
-Index portability uses Qdrant's native snapshot API.
+Index portability uses Qdrant's native snapshot API. A `.csi` archive is a gzip-tar containing `manifest.json` (project name, version, export timestamp) and `qdrant-snapshot.bin` (the raw Qdrant snapshot).
 
-### Export a project to a `.csi` archive
-
-```bash
-cd ~/code/my-app
-codesearch export my-app-2026-05.csi
-```
-
-This produces a gzip-tar containing `manifest.json` (project name, version, export timestamp) and `qdrant-snapshot.bin` (the raw Qdrant snapshot).
-
-### Import on another machine
+### Quick export / import
 
 ```bash
-cd ~/code/my-app
-codesearch import my-app-2026-05.csi
-codesearch daemon   # to catch up on edits since the snapshot
+# Write the snapshot to an explicit path
+codesearch export ~/Desktop/my-app-2026-05.csi
+
+# Restore from that path on another machine
+codesearch import ~/Desktop/my-app-2026-05.csi
+codesearch daemon   # reconciles drift since the snapshot
 ```
 
-The import restores the collection wholesale; running `daemon` afterwards reconciles any drift.
+The import restores the collection wholesale; `daemon` afterwards picks up any files that changed since the snapshot was taken.
+
+### Committing the index to the repo
+
+`codesearch` treats `.codesearch/index.csi` as the canonical repo-local snapshot. Both `export` and `import` default to this path when invoked with no argument, so the index can ride along with the source code:
+
+```bash
+# Refresh the committed snapshot before pushing
+codesearch export              # writes .codesearch/index.csi (mkdir -p as needed)
+git add .codesearch/index.csi
+git commit -m "chore: refresh codesearch index snapshot"
+git push
+
+# On clone (anywhere), bootstrap the index from the commit
+git clone <repo> && cd <repo>
+codesearch import              # reads .codesearch/index.csi
+codesearch daemon              # background indexer catches up on any diff
+```
+
+The repo's `.gitignore` already keeps stray `*.csi` archives out of the working tree but **un-ignores** `.codesearch/index.csi` specifically. Anyone cloning your repo gets the indexed snapshot for free; their local Qdrant restores it in one call, and the daemon then watches for changes.
+
+**Size note.** With `nomic-embed-text` (768-dim, 3 KB per vector) plus payload, a 132-chunk project compresses to ~50–200 KB. Repos with tens of thousands of symbols may reach several MB — consider git-LFS or excluding the snapshot from main and shipping it as a release artifact instead.
+
+**Refresh policy.** The snapshot is a point-in-time copy. The daemon keeps the *live* Qdrant collection in sync via fsnotify, but the committed `.csi` only matches reality when you re-run `codesearch export`. Pick one:
+
+- **Per-PR refresh** — run `codesearch export && git add .codesearch/index.csi` as part of your release / PR-prep script.
+- **Pre-commit hook** — automatic but adds a few hundred ms to every commit.
+- **CI artifact** — let CI run `codesearch export` and upload the result; skip committing the file altogether.
+
+---
+
+## Verifying the install
+
+After registering the MCP server in Claude Code or Claude Desktop and restarting the app, ask the agent any of these prompts. Each one exercises a different MCP tool — if all five answer correctly, the pipeline is healthy.
+
+| Prompt | Exercises | Expected behavior |
+|---|---|---|
+| "Use the `codesearch` MCP to check if the indexer daemon is running." | `index_status` | Returns `{"daemon_running":true,"heartbeat_age_secs":<n>}` with `n < 30`. If `daemon_running` is `false` or the age is large, the daemon stopped — restart it. |
+| "Using `codesearch`, find the function that handles initial filesystem walking." | `search_semantic` | Returns chunks ranked by vector similarity. Top result should be `WalkFiles` or `WalkAndIndex` in `internal/indexer/walker.go`. |
+| "Using `codesearch`, show me the `parseQdrantURL` function." | `search_structural` (query=`parseQdrantURL`, type=`function_declaration`) | Returns a single chunk pointing at `cmd/codesearch/cmd_daemon.go` with line numbers + the function body. |
+| "Using `codesearch`, list every exported symbol in `internal/parser/`." | `list_symbols` (filepath prefix) | Returns the parser-package chunks (`Chunk`, `Parser`, `Registry`, `NewRegistry`, `For`, each `*Parser` `Parse` method, language-specific patterns). |
+| "Using `codesearch`, fetch the full source of `Indexer.IndexFile`." | `get_chunk` | Returns the exact function body from `internal/indexer/indexer.go`. |
+
+If the agent does not pick up the MCP tools, restart Claude Code/Desktop after editing the settings file. Tool discovery happens once at startup.
+
+If a search returns empty or stale results, run:
+
+```bash
+# Count points in the collection
+curl -s -X POST http://localhost:6333/collections/<project>/points/count \
+    -H 'Content-Type: application/json' -d '{}'
+```
+
+A count of `1` (the heartbeat alone) means the indexer never wrote any chunks — check the daemon log. A count of `0` means the collection was never created — the daemon hasn't started.
 
 ---
 

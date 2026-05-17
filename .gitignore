@@ -1,8 +1,10 @@
 # Build output
 /codesearch
 
-# Local snapshots (export/import .csi archives)
+# Local snapshots (export/import .csi archives), except the canonical
+# committed index at .codesearch/index.csi
 *.csi
+!/.codesearch/index.csi
 
 # Editor / OS cruft
 .DS_Store

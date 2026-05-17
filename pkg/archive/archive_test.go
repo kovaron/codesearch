@@ -38,3 +38,22 @@ func TestManifestRoundTrip(t *testing.T) {
 
 	_ = os.Remove(outPath) // cleanup
 }
+
+func TestWriteCreatesParentDirs(t *testing.T) {
+	dir := t.TempDir()
+	outPath := filepath.Join(dir, "nested", "deep", "index.csi")
+
+	m := archive.Manifest{Project: "p", Version: archive.Version, ExportedAt: time.Now().UTC()}
+	if err := archive.Write(outPath, m, []byte("data")); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	if _, err := os.Stat(outPath); err != nil {
+		t.Errorf("archive not created at %s: %v", outPath, err)
+	}
+}
+
+func TestDefaultPath(t *testing.T) {
+	if archive.DefaultPath != ".codesearch/index.csi" {
+		t.Errorf("DefaultPath = %q, want %q", archive.DefaultPath, ".codesearch/index.csi")
+	}
+}

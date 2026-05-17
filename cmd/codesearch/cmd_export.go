@@ -16,11 +16,17 @@ import (
 
 func newExportCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "export <output.csi>",
+		Use:   "export [output.csi]",
 		Short: "Export index snapshot to a portable .csi archive",
-		Args:  cobra.ExactArgs(1),
+		Long: "Export index snapshot to a portable .csi archive.\n\n" +
+			"With no argument, writes to " + archive.DefaultPath + " (the conventional\n" +
+			"repo-local path for a committed index snapshot).",
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			outPath := args[0]
+			outPath := archive.DefaultPath
+			if len(args) > 0 {
+				outPath = args[0]
+			}
 			cfg, err := config.Load(".")
 			if err != nil {
 				return err

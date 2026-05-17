@@ -7,10 +7,17 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"time"
 )
 
+// Version is the manifest schema version stamped into every .csi archive.
 const Version = "1.0.0"
+
+// DefaultPath is the conventional repo-local path for a committed index
+// snapshot. The `codesearch export` and `import` commands default to this
+// path when invoked without an argument.
+const DefaultPath = ".codesearch/index.csi"
 
 type Manifest struct {
 	Project    string    `json:"project"`
@@ -18,8 +25,14 @@ type Manifest struct {
 	ExportedAt time.Time `json:"exported_at"`
 }
 
-// Write creates a .csi archive at path with the given manifest and Qdrant snapshot bytes.
+// Write creates a .csi archive at path with the given manifest and Qdrant
+// snapshot bytes. Parent directories are created if missing.
 func Write(path string, m Manifest, snapshot []byte) (err error) {
+	if dir := filepath.Dir(path); dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return fmt.Errorf("create archive dir: %w", err)
+		}
+	}
 	f, err := os.Create(path)
 	if err != nil {
 		return err
