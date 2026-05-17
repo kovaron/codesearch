@@ -11,8 +11,10 @@ import (
 	"github.com/qdrant/go-client/qdrant"
 )
 
-const heartbeatID uint64 = 0
-const heartbeatNodeType = "__heartbeat__"
+const (
+	heartbeatID       uint64 = 0
+	heartbeatNodeType        = "__heartbeat__"
+)
 
 // QdrantStore implements Store using Qdrant gRPC.
 type QdrantStore struct {

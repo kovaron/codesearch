@@ -8,6 +8,9 @@ import (
 	"net/http"
 )
 
+// NomicEmbedTextDim is the vector dimension for the nomic-embed-text model.
+const NomicEmbedTextDim = 768
+
 type OllamaEmbedder struct {
 	baseURL string
 	model   string

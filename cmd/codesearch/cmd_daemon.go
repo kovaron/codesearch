@@ -20,6 +20,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const heartbeatInterval = 15 * time.Second
+
 func newDaemonCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "daemon [dir]",
@@ -39,7 +41,7 @@ func newDaemonCmd() *cobra.Command {
 			defer stop()
 
 			qdrantHost, qdrantPort := parseQdrantURL(cfg.QdrantURL)
-			st, err := store.NewQdrant(ctx, qdrantHost, qdrantPort, cfg.Project, 768)
+			st, err := store.NewQdrant(ctx, qdrantHost, qdrantPort, cfg.Project, embedder.NomicEmbedTextDim)
 			if err != nil {
 				return err
 			}
@@ -50,7 +52,7 @@ func newDaemonCmd() *cobra.Command {
 
 			// Heartbeat goroutine
 			go func() {
-				t := time.NewTicker(15 * time.Second)
+				t := time.NewTicker(heartbeatInterval)
 				defer t.Stop()
 				for {
 					select {

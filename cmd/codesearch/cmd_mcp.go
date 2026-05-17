@@ -21,7 +21,7 @@ func newMCPCmd() *cobra.Command {
 			}
 			ctx := context.Background()
 			qdrantHost, qdrantPort := parseQdrantURL(cfg.QdrantURL)
-			st, err := store.NewQdrant(ctx, qdrantHost, qdrantPort, cfg.Project, 768)
+			st, err := store.NewQdrant(ctx, qdrantHost, qdrantPort, cfg.Project, embedder.NomicEmbedTextDim)
 			if err != nil {
 				return err
 			}

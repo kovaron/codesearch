@@ -19,10 +19,12 @@ type Debouncer struct {
 	timers   map[string]*time.Timer
 }
 
+// NewDebouncer returns a new Debouncer that collapses events within duration d.
 func NewDebouncer(d time.Duration) *Debouncer {
 	return &Debouncer{duration: d, timers: make(map[string]*time.Timer)}
 }
 
+// Add schedules fn to run after the debounce duration, resetting the timer if key is pending.
 func (d *Debouncer) Add(key string, fn func()) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -45,6 +47,7 @@ type Watcher struct {
 	debounce *Debouncer
 }
 
+// New creates a Watcher that monitors dirs and calls handler on file changes.
 func New(dirs []string, handler Handler) (*Watcher, error) {
 	fsw, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -63,6 +66,7 @@ func New(dirs []string, handler Handler) (*Watcher, error) {
 	}, nil
 }
 
+// Run starts the watch loop and blocks until ctx is cancelled.
 func (w *Watcher) Run(ctx context.Context) {
 	defer w.fsw.Close()
 	for {

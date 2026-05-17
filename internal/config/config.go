@@ -19,6 +19,7 @@ type Config struct {
 	Workers     int      `yaml:"workers"`
 }
 
+// Load reads and validates the .codesearch.yaml config file from the given directory.
 func Load(dir string) (*Config, error) {
 	path := filepath.Join(dir, ".codesearch.yaml")
 	data, err := os.ReadFile(path)
@@ -51,6 +52,7 @@ func (c *Config) setDefaults() {
 	}
 }
 
+// Validate returns an error if the config is missing required fields.
 func (c *Config) Validate() error {
 	if c.Project == "" {
 		return fmt.Errorf("config: 'project' is required")

@@ -44,8 +44,9 @@ func NewRegistry() *Registry {
 	return r
 }
 
-// For returns the Parser for the given filename and whether one was found.
-// Always returns a non-nil parser (falls back to FallbackParser).
+// For returns a Parser for filename. The boolean is always true; it exists
+// for ergonomic `if p, ok := reg.For(name); ok { ... }` style and to signal
+// future API evolution. The fallback parser handles unknown extensions.
 func (r *Registry) For(filename string) (Parser, bool) {
 	ext := filepath.Ext(filename)
 	p, ok := r.parsers[ext]

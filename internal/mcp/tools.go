@@ -11,6 +11,8 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
+const heartbeatStaleSeconds = 30
+
 func registerTools(s *server.MCPServer, st store.Store, emb embedder.Embedder) {
 	// 1. search_semantic
 	s.AddTool(
@@ -129,7 +131,7 @@ func registerTools(s *server.MCPServer, st store.Store, emb embedder.Embedder) {
 			if err != nil {
 				return nil, fmt.Errorf("index_status: %w", err)
 			}
-			running := age >= 0 && age < 30
+			running := age >= 0 && age < heartbeatStaleSeconds
 			return jsonResult(map[string]any{
 				"daemon_running":     running,
 				"heartbeat_age_secs": age,
