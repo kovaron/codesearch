@@ -154,13 +154,167 @@ Edit `include` / `exclude` to scope what gets indexed.
 
 ### 2. Start the daemon
 
+#### Foreground (simplest, for first run)
+
 ```bash
 codesearch daemon
 ```
 
-The daemon runs in the foreground. Stops gracefully on `Ctrl-C` (SIGINT) or SIGTERM. Run under your favorite supervisor (`launchd`, `systemd`, `tmux`) for persistence.
+The daemon runs in the foreground. Stops gracefully on `Ctrl-C` (SIGINT) or SIGTERM.
 
-Initial indexing happens as files are walked + their first change events fire. Heartbeat updates every 15 s.
+On startup the daemon walks the full project tree, calls `IndexFile` for every file with a known language extension, and subscribes recursively to every non-noise subdirectory (`.git`, `vendor`, `node_modules`, IDE/build artifacts are skipped). After that it runs continuously, picking up writes/creates/renames with a 200 ms debounce and writing a heartbeat to Qdrant every 15 seconds.
+
+#### Background (detached)
+
+```bash
+mkdir -p ~/.codesearch/logs
+nohup codesearch daemon /path/to/your/repo \
+    > ~/.codesearch/logs/codesearch-daemon.log 2>&1 &
+disown
+```
+
+Check it is alive:
+
+```bash
+pgrep -fl 'codesearch daemon'
+tail -f ~/.codesearch/logs/codesearch-daemon.log
+```
+
+#### macOS — launchd (survives reboots, auto-restarts on crash)
+
+Create `~/Library/LaunchAgents/com.<you>.codesearch.plist` (replace `<you>`, the binary path, the project path, and the username in the log paths to match your machine):
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.you.codesearch</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/you/.local/bin/codesearch</string>
+        <string>daemon</string>
+        <string>/Users/you/code/your-repo</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/you/code/your-repo</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+        <key>Crashed</key>
+        <true/>
+    </dict>
+
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <key>StandardOutPath</key>
+    <string>/Users/you/.codesearch/logs/codesearch-daemon.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/you/.codesearch/logs/codesearch-daemon.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+    </dict>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+</dict>
+</plist>
+```
+
+A ready-to-edit copy for this repo lives at [`docs/launchd/com.kovaron.codesearch.plist`](docs/launchd/com.kovaron.codesearch.plist).
+
+`KeepAlive.Crashed=true` restarts the daemon if it crashes; `SuccessfulExit=false` does **not** restart on a clean exit (so `launchctl bootout` actually stops it). `ThrottleInterval=10` caps the restart rate at one every 10 s.
+
+Load it:
+
+```bash
+mkdir -p ~/.codesearch/logs
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.you.codesearch.plist
+```
+
+Verify:
+
+```bash
+launchctl print gui/$(id -u)/com.you.codesearch | grep -E 'state|pid|last exit'
+# → state = running, pid = <n>, last exit code = (never exited)
+
+pgrep -fl 'codesearch daemon'
+tail -f ~/.codesearch/logs/codesearch-daemon.log
+```
+
+#### Linux — systemd user unit (sketch)
+
+`~/.config/systemd/user/codesearch.service`:
+
+```ini
+[Unit]
+Description=codesearch indexing daemon
+After=network.target
+
+[Service]
+ExecStart=/home/you/.local/bin/codesearch daemon /home/you/code/your-repo
+Restart=on-failure
+RestartSec=10
+StandardOutput=append:/home/you/.codesearch/logs/codesearch-daemon.log
+StandardError=append:/home/you/.codesearch/logs/codesearch-daemon.log
+
+[Install]
+WantedBy=default.target
+```
+
+Then:
+
+```bash
+mkdir -p ~/.codesearch/logs
+systemctl --user daemon-reload
+systemctl --user enable --now codesearch
+journalctl --user -u codesearch -f
+```
+
+### Operational commands
+
+| Action | Foreground / `nohup` | launchd |
+|---|---|---|
+| Start | `codesearch daemon /path/to/repo` | `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.you.codesearch.plist` |
+| Stop  | `Ctrl-C` (fg) or `pkill -f 'codesearch daemon'` | `launchctl bootout gui/$(id -u)/com.you.codesearch` |
+| Restart | stop + start | `launchctl kickstart -k gui/$(id -u)/com.you.codesearch` |
+| Status | `pgrep -fl 'codesearch daemon'` | `launchctl print gui/$(id -u)/com.you.codesearch \| grep -E 'state\|pid'` |
+| Logs | `tail -f ~/.codesearch/logs/codesearch-daemon.log` | same |
+| Reload after rebuild | stop, replace binary, start | `launchctl kickstart -k gui/$(id -u)/com.you.codesearch` |
+
+Verify the index is actually populating:
+
+```bash
+curl -s -X POST http://localhost:6333/collections/<project>/points/count \
+    -H 'Content-Type: application/json' -d '{}'
+# → {"result":{"count":<n>},"status":"ok"}
+```
+
+A non-zero count + a recent heartbeat (use the `index_status` MCP tool from your agent) = healthy daemon.
+
+### Updating the daemon after a code change
+
+```bash
+cd /path/to/codesearch
+go build -o ~/.local/bin/codesearch ./cmd/codesearch/
+launchctl kickstart -k gui/$(id -u)/com.you.codesearch   # if running under launchd
+# OR: kill the foreground/nohup process and start it again
+```
+
+The collection on Qdrant survives binary upgrades; only restart the daemon, not Qdrant.
 
 ### 3. Register the MCP server
 
