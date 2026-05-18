@@ -52,6 +52,9 @@ func LoadTask(path string) (*Task, error) {
 	if t.Prompt == "" {
 		return nil, fmt.Errorf("%s: prompt required", path)
 	}
+	if len(t.Arms) == 0 {
+		return nil, fmt.Errorf("%s: arms required (non-empty)", path)
+	}
 	if t.TurnCap <= 0 {
 		t.TurnCap = 20
 	}

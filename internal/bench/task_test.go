@@ -93,6 +93,23 @@ golden: {type: nope, expected: [a], match: set_equal}
 	}
 }
 
+func TestLoadTask_EmptyArms(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "noarms.yaml")
+	writeFile(t, path, `
+id: x
+kind: search
+prompt: x
+turn_cap: 5
+timeout_seconds: 5
+golden: {type: answer_match, expected: [a], match: substring}
+`)
+	if _, err := LoadTask(path); err == nil {
+		t.Fatal("expected error for empty arms")
+	}
+}
+
 func writeFile(t *testing.T, path, body string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
