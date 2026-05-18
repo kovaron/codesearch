@@ -18,6 +18,7 @@ func main() {
 		newMCPCmd(),
 		newExportCmd(),
 		newImportCmd(),
+		newBenchCmd(),
 	)
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
