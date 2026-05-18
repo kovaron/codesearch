@@ -1,0 +1,16 @@
+id: similar-to-walkandindex
+kind: search
+prompt: |
+  WalkAndIndex in internal/indexer/walker.go is a thin wrapper that walks a
+  directory tree and calls a processing function on each file.
+  Find another function in this repository with a similar shape — a traversal
+  or iteration function that delegates per-item work to a callback or method.
+  Name the function and the file it lives in.
+arms: [codesearch, baseline]
+turn_cap: 20
+timeout_seconds: 120
+golden:
+  type: answer_match
+  match: substring
+  expected:
+    - "WalkFiles"

@@ -1,0 +1,15 @@
+id: rename-parseQdrantURL
+kind: edit
+prompt: |
+  Rename the function parseQdrantURL to parseQdrantEndpoint throughout this
+  repository. Update every call site and the definition.
+  When done, state which files you modified.
+arms: [codesearch, baseline]
+turn_cap: 20
+timeout_seconds: 120
+golden:
+  type: answer_match
+  match: substring
+  expected:
+    - "parseQdrantEndpoint"
+    - "cmd_daemon.go"

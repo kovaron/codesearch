@@ -1,0 +1,14 @@
+id: find-dead-embedder-export
+kind: analysis
+prompt: |
+  Are there any exported functions or types in internal/embedder/ that have
+  no callers anywhere else in this repository (excluding the embedder package itself)?
+  Answer "none" if all exported symbols are used, or list the names of any dead exports.
+arms: [codesearch, baseline]
+turn_cap: 20
+timeout_seconds: 120
+golden:
+  type: answer_match
+  match: substring
+  expected:
+    - "none"

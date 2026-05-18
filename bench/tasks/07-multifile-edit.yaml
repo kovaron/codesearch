@@ -1,0 +1,15 @@
+id: replace-nomic-embed-text
+kind: edit
+prompt: |
+  Replace every occurrence of the string "nomic-embed-text" with
+  "nomic-embed-text-v2" in all *.go files in this repository.
+  When done, state which files you changed.
+arms: [codesearch, baseline]
+turn_cap: 20
+timeout_seconds: 120
+golden:
+  type: answer_match
+  match: substring
+  expected:
+    - "nomic-embed-text-v2"
+    - "ollama.go"

@@ -1,0 +1,17 @@
+id: find-callers-of-indexer-new
+kind: search
+prompt: |
+  Find every call site of indexer.New in this Go repository.
+  List each as a relative file path and line number, one per line,
+  in the format "path/to/file.go:LINE".
+  Include both production code and test files.
+arms: [codesearch, baseline]
+turn_cap: 20
+timeout_seconds: 120
+golden:
+  type: answer_match
+  match: substring
+  expected:
+    - "cmd/codesearch/cmd_daemon.go"
+    - "internal/indexer/indexer_test.go"
+    - "internal/indexer/e2e_test.go"

@@ -1,0 +1,15 @@
+id: find-walk-functions
+kind: search
+prompt: |
+  Find all exported functions whose names start with "Walk" in this repository.
+  For each, report the relative file path and line number.
+arms: [codesearch, baseline]
+turn_cap: 20
+timeout_seconds: 120
+golden:
+  type: answer_match
+  match: substring
+  expected:
+    - "internal/indexer/walker.go"
+    - "WalkFiles"
+    - "WalkAndIndex"

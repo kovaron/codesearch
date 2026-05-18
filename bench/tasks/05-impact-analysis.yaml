@@ -1,0 +1,15 @@
+id: impact-batchembed
+kind: analysis
+prompt: |
+  If a BatchEmbed(ctx context.Context, texts []string) ([][]float32, error) method
+  were added to the embedder.Embedder interface, which non-test Go files in this
+  repository would need to change to satisfy the interface?
+  List each as a relative file path, one per line.
+arms: [codesearch, baseline]
+turn_cap: 20
+timeout_seconds: 120
+golden:
+  type: answer_match
+  match: substring
+  expected:
+    - "internal/embedder/ollama.go"

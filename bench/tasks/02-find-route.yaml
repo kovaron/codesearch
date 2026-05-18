@@ -1,0 +1,15 @@
+id: find-search-structural-handler
+kind: search
+prompt: |
+  Find the file and line number where the search_structural MCP tool handler
+  is registered in this repository.
+  Answer with the relative file path and line number like "path/to/file.go:LINE".
+arms: [codesearch, baseline]
+turn_cap: 20
+timeout_seconds: 120
+golden:
+  type: answer_match
+  match: substring
+  expected:
+    - "internal/mcp/tools.go"
+    - "search_structural"

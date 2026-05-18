@@ -1,0 +1,14 @@
+id: find-qdrant-client-error
+kind: search
+prompt: |
+  Find the fmt.Errorf call whose format string starts with "qdrant client:" in
+  this repository. Report the relative file path and line number.
+arms: [codesearch, baseline]
+turn_cap: 20
+timeout_seconds: 120
+golden:
+  type: answer_match
+  match: substring
+  expected:
+    - "internal/store/qdrant.go"
+    - "qdrant client"
