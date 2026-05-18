@@ -370,6 +370,19 @@ The agent calls `search_structural` with `query="HandleLogin"`.
 
 ---
 
+## Benchmarking
+
+Compare codesearch's MCP tools against a POSIX `find`/`grep`/`sed` baseline:
+
+```bash
+codesearch bench --dry-run   # validate task YAMLs + goldens, no API spend
+codesearch bench             # full run (N=3, both arms, all 10 tasks)
+```
+
+See `bench/README.md` for the task catalogue, authoring guide, and output format.
+
+---
+
 ## Export / Import
 
 Index portability uses Qdrant's native snapshot API. A `.csi` archive is a gzip-tar containing `manifest.json` (project name, version, export timestamp) and `qdrant-snapshot.bin` (the raw Qdrant snapshot).
