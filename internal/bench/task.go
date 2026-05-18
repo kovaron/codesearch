@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -68,4 +71,66 @@ func LoadTask(path string) (*Task, error) {
 		return nil, fmt.Errorf("%s: invalid golden.match %q", path, t.Golden.Match)
 	}
 	return &t, nil
+}
+
+// EvaluateGolden returns (passed, reason). answer is the agent's final
+// text output; workdir is the sandbox root for file-based checks.
+func EvaluateGolden(g Golden, answer, workdir string) (bool, string) {
+	switch g.Type {
+	case "answer_match":
+		return evalAnswerMatch(g, answer)
+	case "file_exists":
+		for _, rel := range g.Expected {
+			if _, err := os.Stat(filepath.Join(workdir, rel)); err != nil {
+				return false, fmt.Sprintf("missing %s", rel)
+			}
+		}
+		return true, ""
+	case "file_diff":
+		return false, "file_diff not yet implemented"
+	}
+	return false, "unknown golden.type"
+}
+
+func evalAnswerMatch(g Golden, answer string) (bool, string) {
+	match := g.Match
+	if match == "" {
+		match = "substring"
+	}
+	switch match {
+	case "set_equal":
+		got := strings.Fields(strings.ReplaceAll(answer, "\n", " "))
+		gotSet := make(map[string]struct{}, len(got))
+		for _, s := range got {
+			gotSet[s] = struct{}{}
+		}
+		for _, want := range g.Expected {
+			if _, ok := gotSet[want]; !ok {
+				return false, "missing: " + want
+			}
+		}
+		if len(gotSet) != len(g.Expected) {
+			return false, "size mismatch"
+		}
+		return true, ""
+	case "substring":
+		for _, want := range g.Expected {
+			if !strings.Contains(answer, want) {
+				return false, "missing: " + want
+			}
+		}
+		return true, ""
+	case "regex":
+		for _, want := range g.Expected {
+			re, err := regexp.Compile(want)
+			if err != nil {
+				return false, "bad regex: " + want
+			}
+			if !re.MatchString(answer) {
+				return false, "no match: " + want
+			}
+		}
+		return true, ""
+	}
+	return false, "unknown match mode"
 }

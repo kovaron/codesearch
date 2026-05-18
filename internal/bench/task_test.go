@@ -116,3 +116,59 @@ func writeFile(t *testing.T, path, body string) {
 		t.Fatalf("write %s: %v", path, err)
 	}
 }
+
+func TestEvaluateGolden_AnswerMatchSetEqual(t *testing.T) {
+	t.Parallel()
+	g := Golden{Type: "answer_match", Match: "set_equal", Expected: []string{"a.go:1", "b.go:2"}}
+	if ok, _ := EvaluateGolden(g, "b.go:2\na.go:1\n", ""); !ok {
+		t.Fatal("expected match on reordered set")
+	}
+	if ok, _ := EvaluateGolden(g, "a.go:1\n", ""); ok {
+		t.Fatal("missing entry should fail")
+	}
+}
+
+func TestEvaluateGolden_AnswerMatchSubstring(t *testing.T) {
+	t.Parallel()
+	g := Golden{Type: "answer_match", Match: "substring", Expected: []string{"NewIndexer"}}
+	if ok, _ := EvaluateGolden(g, "use NewIndexer here", ""); !ok {
+		t.Fatal("expected substring match")
+	}
+	if ok, _ := EvaluateGolden(g, "nothing here", ""); ok {
+		t.Fatal("missing substring should fail")
+	}
+}
+
+func TestEvaluateGolden_AnswerMatchRegex(t *testing.T) {
+	t.Parallel()
+	g := Golden{Type: "answer_match", Match: "regex", Expected: []string{`^id=\d+$`}}
+	if ok, _ := EvaluateGolden(g, "id=42", ""); !ok {
+		t.Fatal("expected regex match")
+	}
+	if ok, _ := EvaluateGolden(g, "id=foo", ""); ok {
+		t.Fatal("non-matching regex should fail")
+	}
+}
+
+func TestEvaluateGolden_FileExists(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	g := Golden{Type: "file_exists", Expected: []string{"foo.txt"}}
+	if ok, _ := EvaluateGolden(g, "", dir); ok {
+		t.Fatal("foo.txt should not exist yet")
+	}
+	if err := os.WriteFile(filepath.Join(dir, "foo.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := EvaluateGolden(g, "", dir); !ok {
+		t.Fatal("foo.txt should exist")
+	}
+}
+
+func TestEvaluateGolden_UnknownType(t *testing.T) {
+	t.Parallel()
+	g := Golden{Type: "nope"}
+	if ok, _ := EvaluateGolden(g, "", ""); ok {
+		t.Fatal("unknown type must not pass")
+	}
+}
