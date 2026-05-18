@@ -1,0 +1,42 @@
+package bench
+
+import (
+	"strings"
+	"testing"
+	"time"
+)
+
+func sampleAggs() []Aggregated {
+	return []Aggregated{
+		{TaskID: "t1", Arm: "codesearch", TokensMedian: 1000, LatencyMedianMs: 1000, ToolCallsMedian: 2, CorrectnessRate: 1.0, ValidRuns: 3, TotalRuns: 3},
+		{TaskID: "t1", Arm: "baseline", TokensMedian: 4000, LatencyMedianMs: 2000, ToolCallsMedian: 4, CorrectnessRate: 1.0, ValidRuns: 3, TotalRuns: 3},
+	}
+}
+
+func TestRenderMarkdown_ContainsHeadlineAndTable(t *testing.T) {
+	t.Parallel()
+	md := RenderMarkdown(sampleAggs(), Meta{
+		Timestamp: time.Date(2026, 5, 17, 14, 23, 0, 0, time.UTC),
+		Model:     "m", N: 3, Corpus: "self", TurnCap: 20,
+	})
+	if !strings.Contains(md, "Headline") {
+		t.Error("missing Headline")
+	}
+	if !strings.Contains(md, "t1") {
+		t.Error("missing task id")
+	}
+	if !strings.Contains(md, "codesearch") || !strings.Contains(md, "baseline") {
+		t.Error("missing arm names")
+	}
+}
+
+func TestRenderJSON_RoundTrips(t *testing.T) {
+	t.Parallel()
+	js := RenderJSON(sampleAggs(), Meta{
+		Timestamp: time.Date(2026, 5, 17, 14, 23, 0, 0, time.UTC),
+		Model:     "m", N: 3, Corpus: "self", TurnCap: 20,
+	})
+	if !strings.Contains(js, `"task_id": "t1"`) && !strings.Contains(js, `"task_id":"t1"`) {
+		t.Errorf("json missing task_id: %s", js)
+	}
+}
