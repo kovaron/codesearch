@@ -7,6 +7,9 @@ import (
 	"strings"
 )
 
+// safeJoin returns the absolute path of rel resolved against root after
+// rejecting any traversal that escapes root via `..` or absolute paths.
+// It is the only sandbox-confinement check the read/edit tools rely on.
 func safeJoin(root, rel string) (string, error) {
 	clean := filepath.Clean(filepath.Join(root, rel))
 	rootAbs, err := filepath.Abs(root)

@@ -112,7 +112,11 @@ type compositeDispatcher struct {
 
 func (c *compositeDispatcher) Call(ctx context.Context, name string, args json.RawMessage) (string, error) {
 	var m map[string]any
-	_ = json.Unmarshal(args, &m)
+	if len(args) > 0 {
+		if err := json.Unmarshal(args, &m); err != nil {
+			return "", fmt.Errorf("parse args for %s: %w", name, err)
+		}
+	}
 	switch name {
 	case "read_file":
 		return ReadFileTool(c.workdir, sArg(m, "path"))

@@ -3,6 +3,7 @@ package bench
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"time"
@@ -27,7 +28,8 @@ func RunBash(workdir, cmd string, timeout time.Duration) (string, error) {
 		return buf.String(), fmt.Errorf("timeout after %v", timeout)
 	}
 	if err != nil {
-		if _, ok := err.(*exec.ExitError); ok {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
 			return buf.String(), nil
 		}
 		return buf.String(), err
