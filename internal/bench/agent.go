@@ -105,6 +105,14 @@ func RunAgent(ctx context.Context, in AgentInput) AgentOutput {
 				}
 				toolBlocks = append(toolBlocks, anthropic.NewToolResultBlock(id, result, false))
 			}
+			if len(toolBlocks) == 0 {
+				// tool_use stop reason but no parsable tool_use blocks — break to
+				// avoid sending the API an empty user turn.
+				out.Truncated = true
+				out.Answer = collectText(resp.Content)
+				out.LatencyMs = time.Since(start).Milliseconds()
+				return out
+			}
 			// Append assistant turn then tool results as user turn.
 			msgs = append(msgs, asAssistantMessage(resp))
 			msgs = append(msgs, anthropic.NewUserMessage(toolBlocks...))
