@@ -128,6 +128,14 @@ func TestEvaluateGolden_AnswerMatchSetEqual(t *testing.T) {
 	}
 }
 
+func TestEvaluateGolden_SetEqualDeduplicatesExpected(t *testing.T) {
+	t.Parallel()
+	g := Golden{Type: "answer_match", Match: "set_equal", Expected: []string{"a", "b", "a"}}
+	if ok, reason := EvaluateGolden(g, "a b\n", ""); !ok {
+		t.Fatalf("expected duplicate-in-expected to dedupe, got fail: %s", reason)
+	}
+}
+
 func TestEvaluateGolden_AnswerMatchSubstring(t *testing.T) {
 	t.Parallel()
 	g := Golden{Type: "answer_match", Match: "substring", Expected: []string{"NewIndexer"}}

@@ -104,12 +104,16 @@ func evalAnswerMatch(g Golden, answer string) (bool, string) {
 		for _, s := range got {
 			gotSet[s] = struct{}{}
 		}
-		for _, want := range g.Expected {
-			if _, ok := gotSet[want]; !ok {
-				return false, "missing: " + want
+		wantSet := make(map[string]struct{}, len(g.Expected))
+		for _, w := range g.Expected {
+			wantSet[w] = struct{}{}
+		}
+		for w := range wantSet {
+			if _, ok := gotSet[w]; !ok {
+				return false, "missing: " + w
 			}
 		}
-		if len(gotSet) != len(g.Expected) {
+		if len(gotSet) != len(wantSet) {
 			return false, "size mismatch"
 		}
 		return true, ""
