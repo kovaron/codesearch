@@ -165,6 +165,36 @@ func TestAgentLoop_RespectsTokenBudget(t *testing.T) {
 	}
 }
 
+func TestAgentLoop_SurfacesCacheTokens(t *testing.T) {
+	t.Parallel()
+	reply := &anthropic.Message{
+		StopReason: anthropic.StopReasonEndTurn,
+		Content:    []anthropic.ContentBlockUnion{{Type: "text", Text: "done"}},
+		Usage: anthropic.Usage{
+			InputTokens:              10,
+			OutputTokens:             5,
+			CacheReadInputTokens:     42,
+			CacheCreationInputTokens: 7,
+		},
+	}
+	client := &fakeAnthropic{replies: []*anthropic.Message{reply}}
+	res := RunAgent(context.Background(), AgentInput{
+		Client:     client,
+		Dispatcher: stubDispatcher{response: "[]"},
+		Model:      "x",
+		UserPrompt: "q",
+		System:     "sys",
+		Arm:        ArmCodesearch,
+		TurnCap:    5,
+	})
+	if res.CacheReadTokens != 42 {
+		t.Errorf("CacheReadTokens=%d want 42", res.CacheReadTokens)
+	}
+	if res.CacheWriteTokens != 7 {
+		t.Errorf("CacheWriteTokens=%d want 7", res.CacheWriteTokens)
+	}
+}
+
 func TestAgentLoop_TruncatesAtCap(t *testing.T) {
 	t.Parallel()
 	// Always returns tool_use, so the loop must hit the TurnCap.

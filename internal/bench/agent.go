@@ -60,7 +60,10 @@ func RunAgent(ctx context.Context, in AgentInput) AgentOutput {
 
 	var systemBlocks []anthropic.TextBlockParam
 	if in.System != "" {
-		systemBlocks = []anthropic.TextBlockParam{{Text: in.System}}
+		systemBlocks = []anthropic.TextBlockParam{{
+			Text:         in.System,
+			CacheControl: anthropic.NewCacheControlEphemeralParam(),
+		}}
 	}
 
 	out := AgentOutput{}
@@ -71,7 +74,7 @@ func RunAgent(ctx context.Context, in AgentInput) AgentOutput {
 			MaxTokens: int64(maxTok),
 			System:    systemBlocks,
 			Messages:  msgs,
-			Tools:     ToolDefs(in.Arm),
+			Tools:     toolDefsWithCache(in.Arm),
 		}
 
 		resp, err := in.Client.CreateMessage(ctx, req)
@@ -158,6 +161,21 @@ func asToolUse(c anthropic.ContentBlockUnion) (name, id string, args json.RawMes
 		return "", "", nil, false
 	}
 	return c.Name, c.ID, c.Input, true
+}
+
+// toolDefsWithCache returns ToolDefs for arm with a cache-control breakpoint on
+// the last tool definition. This tells the Anthropic API to cache everything up
+// to and including that block, covering the full tool list on subsequent turns.
+func toolDefsWithCache(arm ArmName) []anthropic.ToolUnionParam {
+	tools := ToolDefs(arm)
+	if len(tools) == 0 {
+		return tools
+	}
+	last := &tools[len(tools)-1]
+	if last.OfTool != nil {
+		last.OfTool.CacheControl = anthropic.NewCacheControlEphemeralParam()
+	}
+	return tools
 }
 
 // asAssistantMessage converts an API response into an assistant MessageParam
