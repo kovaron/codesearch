@@ -19,12 +19,13 @@ import (
 // newBenchCmd returns the cobra command for the bench subcommand.
 func newBenchCmd() *cobra.Command {
 	var (
-		tasksDir string
-		n        int
-		model    string
-		outDir   string
-		taskID   string
-		dryRun   bool
+		tasksDir  string
+		n         int
+		model     string
+		outDir    string
+		taskID    string
+		dryRun    bool
+		maxTokens int
 	)
 	cmd := &cobra.Command{
 		Use:   "bench",
@@ -54,13 +55,14 @@ func newBenchCmd() *cobra.Command {
 			}
 			emb := embedder.NewOllama(cfg.OllamaURL, cfg.OllamaModel)
 			r := &bench.Runner{
-				Client:   bench.NewSDKClient(apiKey),
-				Store:    st,
-				Embedder: emb,
-				Project:  cfg.Project,
-				Model:    model,
-				SrcRepo:  mustAbsPath("."),
-				N:        n,
+				Client:         bench.NewSDKClient(apiKey),
+				Store:          st,
+				Embedder:       emb,
+				Project:        cfg.Project,
+				Model:          model,
+				SrcRepo:        mustAbsPath("."),
+				N:              n,
+				MaxTotalTokens: maxTokens,
 			}
 			var allRuns []bench.RunResult
 			for _, t := range tasks {
@@ -94,6 +96,7 @@ func newBenchCmd() *cobra.Command {
 	cmd.Flags().StringVar(&outDir, "out", "bench/results", "output directory")
 	cmd.Flags().StringVar(&taskID, "task-id", "", "run only the named task")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "validate tasks + goldens, no API calls")
+	cmd.Flags().IntVar(&maxTokens, "max-tokens", 200000, "per-task total token budget (input+output); 0 = unlimited")
 	return cmd
 }
 

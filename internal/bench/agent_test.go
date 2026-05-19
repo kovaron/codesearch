@@ -128,6 +128,43 @@ func TestAgentLoop_DispatchesToolCallsAndStops(t *testing.T) {
 	}
 }
 
+func toolUseBlock(id, name string, argsJSON string) anthropic.ContentBlockUnion {
+	return anthropic.ContentBlockUnion{
+		Type:  "tool_use",
+		ID:    id,
+		Name:  name,
+		Input: json.RawMessage(argsJSON),
+	}
+}
+
+func TestAgentLoop_RespectsTokenBudget(t *testing.T) {
+	t.Parallel()
+	// Each tool_use reply burns 50k tokens. Budget of 60k must trip after 1 turn.
+	loop := &anthropic.Message{
+		StopReason: anthropic.StopReasonToolUse,
+		Content:    []anthropic.ContentBlockUnion{toolUseBlock("u", "search_structural", `{"query":"x"}`)},
+		Usage:      anthropic.Usage{InputTokens: 50000, OutputTokens: 0},
+	}
+	client := &fakeAnthropic{replies: []*anthropic.Message{loop}}
+	res := RunAgent(context.Background(), AgentInput{
+		Client:         client,
+		Dispatcher:     stubDispatcher{response: "[]"},
+		Model:          "x",
+		Workdir:        t.TempDir(),
+		System:         "sys",
+		UserPrompt:     "p",
+		Arm:            ArmCodesearch,
+		TurnCap:        20,
+		MaxTotalTokens: 60000,
+	})
+	if !res.Truncated {
+		t.Error("expected Truncated=true on token budget exhaustion")
+	}
+	if res.Turns > 2 {
+		t.Errorf("expected ≤2 turns, got %d", res.Turns)
+	}
+}
+
 func TestAgentLoop_TruncatesAtCap(t *testing.T) {
 	t.Parallel()
 	// Always returns tool_use, so the loop must hit the TurnCap.

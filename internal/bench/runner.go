@@ -17,13 +17,14 @@ Turn cap: %d.`
 
 // Runner orchestrates per-task agent execution across two arms.
 type Runner struct {
-	Client   AnthropicClient
-	Store    store.Store
-	Embedder embedder.Embedder
-	Project  string
-	Model    string
-	SrcRepo  string
-	N        int
+	Client         AnthropicClient
+	Store          store.Store
+	Embedder       embedder.Embedder
+	Project        string
+	Model          string
+	SrcRepo        string
+	N              int
+	MaxTotalTokens int // per-task token budget; 0 defaults to 200000
 }
 
 // RunTask executes one task across every arm in t.Arms, N times each.
@@ -50,15 +51,20 @@ func (r *Runner) runOne(ctx context.Context, t *Task, arm ArmName, idx int) RunR
 	taskCtx, cancel := context.WithTimeout(ctx, time.Duration(t.TimeoutSeconds)*time.Second)
 	defer cancel()
 
+	maxTok := r.MaxTotalTokens
+	if maxTok == 0 {
+		maxTok = 200000
+	}
 	agent := RunAgent(taskCtx, AgentInput{
-		Client:     r.Client,
-		Dispatcher: disp,
-		Model:      r.Model,
-		Workdir:    workdir,
-		System:     system,
-		UserPrompt: t.Prompt,
-		Arm:        arm,
-		TurnCap:    t.TurnCap,
+		Client:         r.Client,
+		Dispatcher:     disp,
+		Model:          r.Model,
+		Workdir:        workdir,
+		System:         system,
+		UserPrompt:     t.Prompt,
+		Arm:            arm,
+		TurnCap:        t.TurnCap,
+		MaxTotalTokens: maxTok,
 	})
 
 	correct, reason := EvaluateGolden(t.Golden, agent.Answer, workdir)

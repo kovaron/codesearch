@@ -16,15 +16,16 @@ type Dispatcher interface {
 
 // AgentInput carries all configuration needed to run one agent turn loop.
 type AgentInput struct {
-	Client     AnthropicClient
-	Dispatcher Dispatcher
-	Model      string
-	Workdir    string
-	System     string
-	UserPrompt string
-	Arm        ArmName
-	TurnCap    int
-	MaxTokens  int
+	Client         AnthropicClient
+	Dispatcher     Dispatcher
+	Model          string
+	Workdir        string
+	System         string
+	UserPrompt     string
+	Arm            ArmName
+	TurnCap        int
+	MaxTokens      int
+	MaxTotalTokens int // hard cap on total (input+output) tokens; 0 = unlimited
 }
 
 // AgentOutput holds the result of a completed agent run.
@@ -84,6 +85,13 @@ func RunAgent(ctx context.Context, in AgentInput) AgentOutput {
 		out.OutputTokens += int(resp.Usage.OutputTokens)
 		out.CacheReadTokens += int(resp.Usage.CacheReadInputTokens)
 		out.CacheWriteTokens += int(resp.Usage.CacheCreationInputTokens)
+
+		if in.MaxTotalTokens > 0 && out.InputTokens+out.OutputTokens >= in.MaxTotalTokens {
+			out.Truncated = true
+			out.Answer = collectText(resp.Content)
+			out.LatencyMs = time.Since(start).Milliseconds()
+			return out
+		}
 
 		switch resp.StopReason {
 		case anthropic.StopReasonEndTurn:
