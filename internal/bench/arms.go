@@ -89,6 +89,17 @@ func ToolDefs(arm ArmName) []anthropic.ToolUnionParam {
 				),
 				[]string{"symbol", "direction"},
 			),
+			makeTool("replace_in_files",
+				"Replace every occurrence of `old` with `new` in every file matching `pattern` (supports **/*.ext recursive globs). Server-side multi-file edit — use for codebase-wide renames or string substitutions instead of looping read_file + edit_file. Returns changed file list and replacement count. Set dry_run=true to preview without writing.",
+				propMap(
+					"pattern", "string", "File path glob (e.g. **/*.go, internal/**/*.yaml). **/*.ext matches any depth.",
+					"old", "string", "Literal substring to find.",
+					"new", "string", "Replacement string (may be empty for deletion).",
+					"project", "string", "Project name (for consistency with other tools).",
+					"dry_run", "boolean", "When true, return matching files without writing (default false).",
+				),
+				[]string{"pattern", "old"},
+			),
 		)
 
 	default: // ArmBaseline

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/kovaron/codesearch/internal/embedder"
+	"github.com/kovaron/codesearch/internal/fsops"
 	"github.com/kovaron/codesearch/internal/store"
 )
 
@@ -156,6 +157,24 @@ func (c *compositeDispatcher) Call(ctx context.Context, name string, args json.R
 		return ReadFileTool(c.workdir, sArg(m, "path"))
 	case "edit_file":
 		return "ok", EditFileTool(c.workdir, sArg(m, "path"), sArg(m, "old"), sArg(m, "new"))
+	case "replace_in_files":
+		pattern := sArg(m, "pattern")
+		old := sArg(m, "old")
+		newStr := sArg(m, "new")
+		dryRun := bArg(m, "dry_run")
+		changed, total, err := fsops.ReplaceInFiles(c.workdir, pattern, old, newStr, dryRun)
+		if err != nil {
+			return "", err
+		}
+		result, merr := json.Marshal(map[string]any{
+			"files_changed":      changed,
+			"total_replacements": total,
+			"dry_run":            dryRun,
+		})
+		if merr != nil {
+			return "", merr
+		}
+		return string(result), nil
 	case "bash":
 		if !c.allowBash {
 			return "", fmt.Errorf("bash not available on this arm")
@@ -184,4 +203,11 @@ func iArg(m map[string]any, k string, def int) int {
 		return int(v)
 	}
 	return def
+}
+
+func bArg(m map[string]any, k string) bool {
+	if v, ok := m[k].(bool); ok {
+		return v
+	}
+	return false
 }

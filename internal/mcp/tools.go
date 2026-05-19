@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 
 	"github.com/kovaron/codesearch/internal/embedder"
+	"github.com/kovaron/codesearch/internal/fsops"
 	"github.com/kovaron/codesearch/internal/store"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -14,6 +16,9 @@ import (
 const heartbeatStaleSeconds = 30
 
 func registerTools(s *server.MCPServer, st store.Store, emb embedder.Embedder) {
+	// Capture workdir once at registration time so the handler is not affected
+	// by any future os.Chdir calls.
+	workdir, _ := os.Getwd()
 	// 1. search_semantic
 	s.AddTool(
 		mcp.NewTool("search_semantic",
@@ -207,6 +212,40 @@ func registerTools(s *server.MCPServer, st store.Store, emb embedder.Embedder) {
 				results = store.LeanResults(results)
 			}
 			return jsonResult(results)
+		},
+	)
+
+	// 8. replace_in_files
+	s.AddTool(
+		mcp.NewTool("replace_in_files",
+			mcp.WithDescription("Replace every occurrence of `old` with `new` in every file matching `pattern` (supports **/*.ext recursive globs). Server-side multi-file edit — use for codebase-wide renames or string substitutions instead of looping read_file + edit_file. Returns changed file list and replacement count. Set dry_run=true to preview without writing."),
+			mcp.WithString("pattern", mcp.Required(), mcp.Description("File path glob (e.g. **/*.go, internal/**/*.yaml). **/*.ext matches any depth.")),
+			mcp.WithString("old", mcp.Required(), mcp.Description("Literal substring to find.")),
+			mcp.WithString("new", mcp.Required(), mcp.Description("Replacement string (may be empty for deletion).")),
+			mcp.WithString("project", mcp.Required(), mcp.Description("Project name from .codesearch.yaml")),
+			mcp.WithBoolean("dry_run", mcp.Description("When true, return matching files without writing (default false).")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			pattern, err := req.RequireString("pattern")
+			if err != nil {
+				return nil, fmt.Errorf("replace_in_files: %w", err)
+			}
+			old, err := req.RequireString("old")
+			if err != nil {
+				return nil, fmt.Errorf("replace_in_files: %w", err)
+			}
+			newStr := req.GetString("new", "")
+			dryRun := req.GetBool("dry_run", false)
+
+			changed, total, rerr := fsops.ReplaceInFiles(workdir, pattern, old, newStr, dryRun)
+			if rerr != nil {
+				return nil, fmt.Errorf("replace_in_files: %w", rerr)
+			}
+			return jsonResult(map[string]any{
+				"files_changed":      changed,
+				"total_replacements": total,
+				"dry_run":            dryRun,
+			})
 		},
 	)
 
