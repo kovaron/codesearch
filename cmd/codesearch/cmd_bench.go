@@ -132,8 +132,8 @@ func loadBenchTasks(dir, only string) ([]*bench.Task, error) {
 // structurally complete and writes "dry-run: OK" to w on success.
 func validateBenchGoldens(w io.Writer, tasks []*bench.Task) error {
 	for _, t := range tasks {
-		if t.Golden.Type == "file_diff" && t.Golden.DiffPath == "" {
-			return fmt.Errorf("%s: file_diff requires diff_path", t.ID)
+		if t.Golden.Type == "file_diff" && len(t.Golden.ExpectedFiles) == 0 {
+			return fmt.Errorf("%s: file_diff requires expected_files", t.ID)
 		}
 		if (t.Golden.Type == "answer_match" || t.Golden.Type == "file_exists") && len(t.Golden.Expected) == 0 {
 			return fmt.Errorf("%s: %s requires expected[]", t.ID, t.Golden.Type)

@@ -24,10 +24,18 @@ type Task struct {
 
 // Golden describes the expected outcome for a Task.
 type Golden struct {
-	Type     string   `yaml:"type"`
-	Expected []string `yaml:"expected,omitempty"`
-	Match    string   `yaml:"match,omitempty"`
-	DiffPath string   `yaml:"diff_path,omitempty"`
+	Type          string          `yaml:"type"`
+	Expected      []string        `yaml:"expected,omitempty"`
+	Match         string          `yaml:"match,omitempty"`
+	DiffPath      string          `yaml:"diff_path,omitempty"`
+	ExpectedFiles []FileAssertion `yaml:"expected_files,omitempty"`
+}
+
+// FileAssertion describes per-file contains/not_contains checks for file_diff goldens.
+type FileAssertion struct {
+	Path        string   `yaml:"path"`
+	Contains    []string `yaml:"contains,omitempty"`
+	NotContains []string `yaml:"not_contains,omitempty"`
 }
 
 var validKinds = map[string]bool{"search": true, "read": true, "edit": true, "analysis": true}
@@ -87,7 +95,28 @@ func EvaluateGolden(g Golden, answer, workdir string) (bool, string) {
 		}
 		return true, ""
 	case "file_diff":
-		return false, "file_diff not yet implemented"
+		for _, fa := range g.ExpectedFiles {
+			p, err := safeJoin(workdir, fa.Path)
+			if err != nil {
+				return false, "path: " + err.Error()
+			}
+			b, err := os.ReadFile(p)
+			if err != nil {
+				return false, "read " + fa.Path + ": " + err.Error()
+			}
+			s := string(b)
+			for _, want := range fa.Contains {
+				if !strings.Contains(s, want) {
+					return false, fa.Path + " missing " + want
+				}
+			}
+			for _, bad := range fa.NotContains {
+				if strings.Contains(s, bad) {
+					return false, fa.Path + " still has " + bad
+				}
+			}
+		}
+		return true, ""
 	}
 	return false, "unknown golden.type"
 }

@@ -8,8 +8,10 @@ arms: [codesearch, baseline]
 turn_cap: 20
 timeout_seconds: 120
 golden:
-  type: answer_match
-  match: substring
-  expected:
-    - "parseQdrantEndpoint"
-    - "cmd_daemon.go"
+  type: file_diff
+  expected_files:
+    - path: cmd/codesearch/cmd_daemon.go
+      contains:
+        - "parseQdrantEndpoint"
+      not_contains:
+        - "parseQdrantURL"

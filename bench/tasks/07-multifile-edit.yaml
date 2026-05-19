@@ -8,8 +8,10 @@ arms: [codesearch, baseline]
 turn_cap: 20
 timeout_seconds: 120
 golden:
-  type: answer_match
-  match: substring
-  expected:
-    - "nomic-embed-text-v2"
-    - "ollama.go"
+  type: file_diff
+  expected_files:
+    - path: internal/embedder/ollama.go
+      contains:
+        - "nomic-embed-text-v2"
+      not_contains:
+        - "nomic-embed-text\""

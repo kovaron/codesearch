@@ -180,3 +180,52 @@ func TestEvaluateGolden_UnknownType(t *testing.T) {
 		t.Fatal("unknown type must not pass")
 	}
 }
+
+func TestEvaluateGolden_FileDiff_Pass(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "x.go"), "func Bar() {}\n")
+	g := Golden{
+		Type: "file_diff",
+		ExpectedFiles: []FileAssertion{{
+			Path:        "x.go",
+			Contains:    []string{"func Bar"},
+			NotContains: []string{"func Foo"},
+		}},
+	}
+	if ok, reason := EvaluateGolden(g, "", dir); !ok {
+		t.Fatalf("expected pass, got: %s", reason)
+	}
+}
+
+func TestEvaluateGolden_FileDiff_FailsOnMissing(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "x.go"), "func Foo() {}\n")
+	g := Golden{
+		Type: "file_diff",
+		ExpectedFiles: []FileAssertion{{
+			Path:     "x.go",
+			Contains: []string{"func Bar"},
+		}},
+	}
+	if ok, _ := EvaluateGolden(g, "", dir); ok {
+		t.Fatal("expected fail")
+	}
+}
+
+func TestEvaluateGolden_FileDiff_FailsOnForbidden(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "x.go"), "func Foo() {}\n")
+	g := Golden{
+		Type: "file_diff",
+		ExpectedFiles: []FileAssertion{{
+			Path:        "x.go",
+			NotContains: []string{"func Foo"},
+		}},
+	}
+	if ok, _ := EvaluateGolden(g, "", dir); ok {
+		t.Fatal("expected fail")
+	}
+}
