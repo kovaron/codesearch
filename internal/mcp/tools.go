@@ -131,6 +131,43 @@ func registerTools(s *server.MCPServer, st store.Store, emb embedder.Embedder) {
 		},
 	)
 
+	// 6. search_hybrid
+	s.AddTool(
+		mcp.NewTool("search_hybrid",
+			mcp.WithDescription("Best general-purpose search; use when unsure which of semantic vs structural fits. Embeds the query and runs both semantic vector search and structural name search, then fuses results via reciprocal rank fusion (RRF). Returns headers only (path, name, lines, score); set include_source=true to fold source into each hit."),
+			mcp.WithString("query", mcp.Required(), mcp.Description("Search query (used for both semantic embedding and structural name lookup)")),
+			mcp.WithString("project", mcp.Required(), mcp.Description("Project name from .codesearch.yaml")),
+			mcp.WithNumber("limit", mcp.Description("Max results after fusion (default 5)")),
+			mcp.WithBoolean("include_source", mcp.Description("Include each hit's source text inline (default false)")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			query, err := req.RequireString("query")
+			if err != nil {
+				return nil, fmt.Errorf("search_hybrid: %w", err)
+			}
+			limit := req.GetInt("limit", 5)
+			includeSource := req.GetBool("include_source", false)
+
+			vec, err := emb.Embed(ctx, query)
+			if err != nil {
+				return nil, fmt.Errorf("search_hybrid: embed query: %w", err)
+			}
+			semResults, err := st.SearchSemantic(ctx, vec, limit)
+			if err != nil {
+				return nil, fmt.Errorf("search_hybrid: semantic: %w", err)
+			}
+			strResults, err := st.SearchStructural(ctx, query, "", "", limit)
+			if err != nil {
+				return nil, fmt.Errorf("search_hybrid: structural: %w", err)
+			}
+			results := store.FuseRRF(semResults, strResults, limit, 0)
+			if !includeSource {
+				results = store.LeanResults(results)
+			}
+			return jsonResult(results)
+		},
+	)
+
 	// 5. index_status
 	s.AddTool(
 		mcp.NewTool("index_status",

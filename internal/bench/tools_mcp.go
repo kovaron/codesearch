@@ -92,6 +92,28 @@ func (d *MCPDispatcher) Call(ctx context.Context, name string, raw json.RawMessa
 		}
 		return marshal(result)
 
+	case "search_hybrid":
+		query := strArg(args, "query")
+		limit := intArg(args, "limit", 5)
+		includeSource := boolArg(args, "include_source", false)
+		vec, err := d.emb.Embed(ctx, query)
+		if err != nil {
+			return "", fmt.Errorf("search_hybrid: embed query: %w", err)
+		}
+		semResults, err := d.store.SearchSemantic(ctx, vec, limit)
+		if err != nil {
+			return "", fmt.Errorf("search_hybrid: semantic: %w", err)
+		}
+		strResults, err := d.store.SearchStructural(ctx, query, "", "", limit)
+		if err != nil {
+			return "", fmt.Errorf("search_hybrid: structural: %w", err)
+		}
+		results := store.FuseRRF(semResults, strResults, limit, 0)
+		if !includeSource {
+			results = store.LeanResults(results)
+		}
+		return marshal(results)
+
 	case "index_status":
 		age, err := d.store.HeartbeatAge(ctx)
 		if err != nil {
