@@ -80,6 +80,15 @@ func ToolDefs(arm ArmName) []anthropic.ToolUnionParam {
 				map[string]any{},
 				nil,
 			),
+			makeTool("trace_path", "Traverse the call graph rooted at `symbol`. direction=inbound lists call sites; direction=outbound lists what symbol calls. Useful for impact analysis and 'who depends on X' questions in one round trip instead of 3-5 grep + read steps. Returns headers only (path, name, lines); set include_source=true to fold source into each hit.",
+				propMap(
+					"symbol", "string", "Symbol name to trace.",
+					"direction", "string", "inbound: find call sites of symbol; outbound: find symbols called by symbol.",
+					"limit", "integer", "Max results (default 10).",
+					"include_source", "boolean", "Include each hit's source text inline (default false).",
+				),
+				[]string{"symbol", "direction"},
+			),
 		)
 
 	default: // ArmBaseline

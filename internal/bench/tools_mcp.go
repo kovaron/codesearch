@@ -124,6 +124,32 @@ func (d *MCPDispatcher) Call(ctx context.Context, name string, raw json.RawMessa
 			"daemon_running":     running,
 			"heartbeat_age_secs": age,
 		})
+
+	case "trace_path":
+		symbol := strArg(args, "symbol")
+		direction := strArg(args, "direction")
+		limit := intArg(args, "limit", 10)
+		includeSource := boolArg(args, "include_source", false)
+		if direction != "inbound" && direction != "outbound" {
+			return "", fmt.Errorf("trace_path: direction must be \"inbound\" or \"outbound\", got %q", direction)
+		}
+		var (
+			results []store.SearchResult
+			tpErr   error
+		)
+		switch direction {
+		case "inbound":
+			results, tpErr = store.FindCallers(ctx, d.store, symbol, limit)
+		case "outbound":
+			results, tpErr = store.FindCallees(ctx, d.store, symbol, limit)
+		}
+		if tpErr != nil {
+			return "", fmt.Errorf("trace_path: %w", tpErr)
+		}
+		if !includeSource {
+			results = store.LeanResults(results)
+		}
+		return marshal(results)
 	}
 
 	return "", fmt.Errorf("%w: %s", ErrUnknownTool, name)

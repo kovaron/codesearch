@@ -168,6 +168,48 @@ func registerTools(s *server.MCPServer, st store.Store, emb embedder.Embedder) {
 		},
 	)
 
+	// 7. trace_path
+	s.AddTool(
+		mcp.NewTool("trace_path",
+			mcp.WithDescription("Traverse the call graph rooted at `symbol`. direction=inbound lists call sites; direction=outbound lists what symbol calls. Useful for impact analysis and 'who depends on X' questions in one round trip instead of 3-5 grep + read steps. Returns headers only (path, name, lines); set include_source=true to fold source into each hit."),
+			mcp.WithString("symbol", mcp.Required(), mcp.Description("Symbol name to trace")),
+			mcp.WithString("direction", mcp.Required(), mcp.Description("inbound: find call sites of symbol; outbound: find symbols called by symbol")),
+			mcp.WithString("project", mcp.Required(), mcp.Description("Project name from .codesearch.yaml")),
+			mcp.WithNumber("limit", mcp.Description("Max results (default 10)")),
+			mcp.WithBoolean("include_source", mcp.Description("Include each hit's source text inline (default false)")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			symbol, err := req.RequireString("symbol")
+			if err != nil {
+				return nil, fmt.Errorf("trace_path: %w", err)
+			}
+			direction, err := req.RequireString("direction")
+			if err != nil {
+				return nil, fmt.Errorf("trace_path: %w", err)
+			}
+			if direction != "inbound" && direction != "outbound" {
+				return nil, fmt.Errorf("trace_path: direction must be \"inbound\" or \"outbound\", got %q", direction)
+			}
+			limit := req.GetInt("limit", 10)
+			includeSource := req.GetBool("include_source", false)
+
+			var results []store.SearchResult
+			switch direction {
+			case "inbound":
+				results, err = store.FindCallers(ctx, st, symbol, limit)
+			case "outbound":
+				results, err = store.FindCallees(ctx, st, symbol, limit)
+			}
+			if err != nil {
+				return nil, fmt.Errorf("trace_path: %w", err)
+			}
+			if !includeSource {
+				results = store.LeanResults(results)
+			}
+			return jsonResult(results)
+		},
+	)
+
 	// 5. index_status
 	s.AddTool(
 		mcp.NewTool("index_status",

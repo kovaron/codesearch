@@ -119,3 +119,29 @@ func TestMCPDispatch_IndexStatus(t *testing.T) {
 		t.Errorf("expected daemon_running=true in out=%s", out)
 	}
 }
+
+func TestMCPDispatch_TracePath_Inbound(t *testing.T) {
+	t.Parallel()
+	listed := []store.SearchResult{
+		{Name: "Caller", Text: "func Caller() { Target() }", Filepath: "a.go"},
+		{Name: "Target", Text: "func Target() {}", Filepath: "b.go"},
+	}
+	d := NewMCPDispatcher("demo", &fakeStore{listed: listed}, fakeEmb{})
+	args, _ := json.Marshal(map[string]any{"symbol": "Target", "direction": "inbound"})
+	out, err := d.Call(context.Background(), "trace_path", args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, `"Caller"`) {
+		t.Errorf("expected Caller in out=%s", out)
+	}
+}
+
+func TestMCPDispatch_TracePath_InvalidDirection(t *testing.T) {
+	t.Parallel()
+	d := NewMCPDispatcher("demo", &fakeStore{}, fakeEmb{})
+	args, _ := json.Marshal(map[string]any{"symbol": "Foo", "direction": "sideways"})
+	if _, err := d.Call(context.Background(), "trace_path", args); err == nil {
+		t.Fatal("expected error for invalid direction")
+	}
+}
