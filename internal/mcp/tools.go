@@ -17,17 +17,19 @@ func registerTools(s *server.MCPServer, st store.Store, emb embedder.Embedder) {
 	// 1. search_semantic
 	s.AddTool(
 		mcp.NewTool("search_semantic",
-			mcp.WithDescription("Search code by natural language query using vector similarity"),
+			mcp.WithDescription("Vector similarity search over indexed code. Use for fuzzy questions (\"what depends on X\", \"find something analogous to Y\"). For literal lookups — exact function name, error string, import path — prefer bash grep; semantic search burns tokens on questions with a literal answer. Returns headers only (path, name, lines, score); set include_source=true to fold source into each hit and skip a separate get_chunk."),
 			mcp.WithString("query", mcp.Required(), mcp.Description("Natural language search query")),
 			mcp.WithString("project", mcp.Required(), mcp.Description("Project name from .codesearch.yaml")),
-			mcp.WithNumber("limit", mcp.Description("Max results (default 10)")),
+			mcp.WithNumber("limit", mcp.Description("Max results (default 5)")),
+			mcp.WithBoolean("include_source", mcp.Description("Include each hit's source text inline (default false)")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			query, err := req.RequireString("query")
 			if err != nil {
 				return nil, fmt.Errorf("search_semantic: %w", err)
 			}
-			limit := req.GetInt("limit", 10)
+			limit := req.GetInt("limit", 5)
+			includeSource := req.GetBool("include_source", false)
 
 			vec, err := emb.Embed(ctx, query)
 			if err != nil {
@@ -37,6 +39,9 @@ func registerTools(s *server.MCPServer, st store.Store, emb embedder.Embedder) {
 			if err != nil {
 				return nil, fmt.Errorf("search_semantic: %w", err)
 			}
+			if !includeSource {
+				results = store.LeanResults(results)
+			}
 			return jsonResult(results)
 		},
 	)
@@ -44,12 +49,13 @@ func registerTools(s *server.MCPServer, st store.Store, emb embedder.Embedder) {
 	// 2. search_structural
 	s.AddTool(
 		mcp.NewTool("search_structural",
-			mcp.WithDescription("Search code by symbol name, type, and language"),
+			mcp.WithDescription("Symbol-name lookup by exact match plus optional node-type and language filters. Fast and precise — use when you know the symbol name. Returns headers only (path, name, lines); set include_source=true to fold the source body into each hit and skip a separate get_chunk round-trip."),
 			mcp.WithString("query", mcp.Required(), mcp.Description("Symbol name to search for")),
 			mcp.WithString("project", mcp.Required(), mcp.Description("Project name from .codesearch.yaml")),
 			mcp.WithString("type", mcp.Description("Node type filter (e.g. function_declaration, class_declaration)")),
 			mcp.WithString("language", mcp.Description("Language filter (e.g. go, python)")),
-			mcp.WithNumber("limit", mcp.Description("Max results (default 20)")),
+			mcp.WithNumber("limit", mcp.Description("Max results (default 10)")),
+			mcp.WithBoolean("include_source", mcp.Description("Include each hit's source text inline (default false)")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			name, err := req.RequireString("query")
@@ -58,11 +64,15 @@ func registerTools(s *server.MCPServer, st store.Store, emb embedder.Embedder) {
 			}
 			nodeType := req.GetString("type", "")
 			language := req.GetString("language", "")
-			limit := req.GetInt("limit", 20)
+			limit := req.GetInt("limit", 10)
+			includeSource := req.GetBool("include_source", false)
 
 			results, err := st.SearchStructural(ctx, name, nodeType, language, limit)
 			if err != nil {
 				return nil, fmt.Errorf("search_structural: %w", err)
+			}
+			if !includeSource {
+				results = store.LeanResults(results)
 			}
 			return jsonResult(results)
 		},
@@ -71,22 +81,23 @@ func registerTools(s *server.MCPServer, st store.Store, emb embedder.Embedder) {
 	// 3. list_symbols
 	s.AddTool(
 		mcp.NewTool("list_symbols",
-			mcp.WithDescription("List all symbols in a file or directory path prefix"),
+			mcp.WithDescription("List symbols under a file or directory prefix. Returns headers only (path, name, lines); fetch a specific symbol's body with get_chunk."),
 			mcp.WithString("project", mcp.Required(), mcp.Description("Project name from .codesearch.yaml")),
 			mcp.WithString("filepath", mcp.Required(), mcp.Description("File or directory path prefix")),
-			mcp.WithNumber("limit", mcp.Description("Max results (default 200)")),
+			mcp.WithNumber("limit", mcp.Description("Max results (default 50)")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			fp, err := req.RequireString("filepath")
 			if err != nil {
 				return nil, fmt.Errorf("list_symbols: %w", err)
 			}
-			limit := req.GetInt("limit", 200)
+			limit := req.GetInt("limit", 50)
 
 			results, err := st.ListByPath(ctx, fp, limit)
 			if err != nil {
 				return nil, fmt.Errorf("list_symbols: %w", err)
 			}
+			results = store.LeanResults(results)
 			return jsonResult(results)
 		},
 	)
@@ -94,7 +105,7 @@ func registerTools(s *server.MCPServer, st store.Store, emb embedder.Embedder) {
 	// 4. get_chunk
 	s.AddTool(
 		mcp.NewTool("get_chunk",
-			mcp.WithDescription("Get a specific named symbol from a file"),
+			mcp.WithDescription("Fetch the full source of a named symbol from a file."),
 			mcp.WithString("project", mcp.Required(), mcp.Description("Project name from .codesearch.yaml")),
 			mcp.WithString("filepath", mcp.Required(), mcp.Description("File path containing the symbol")),
 			mcp.WithString("name", mcp.Required(), mcp.Description("Symbol name")),

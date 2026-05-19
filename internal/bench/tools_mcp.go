@@ -40,7 +40,8 @@ func (d *MCPDispatcher) Call(ctx context.Context, name string, raw json.RawMessa
 	switch name {
 	case "search_semantic":
 		query := strArg(args, "query")
-		limit := intArg(args, "limit", 10)
+		limit := intArg(args, "limit", 5)
+		includeSource := boolArg(args, "include_source", false)
 		vec, err := d.emb.Embed(ctx, query)
 		if err != nil {
 			return "", fmt.Errorf("search_semantic: embed query: %w", err)
@@ -49,26 +50,34 @@ func (d *MCPDispatcher) Call(ctx context.Context, name string, raw json.RawMessa
 		if err != nil {
 			return "", fmt.Errorf("search_semantic: %w", err)
 		}
+		if !includeSource {
+			results = store.LeanResults(results)
+		}
 		return marshal(results)
 
 	case "search_structural":
 		query := strArg(args, "query")
 		nodeType := strArg(args, "type")
 		language := strArg(args, "language")
-		limit := intArg(args, "limit", 20)
+		limit := intArg(args, "limit", 10)
+		includeSource := boolArg(args, "include_source", false)
 		results, err := d.store.SearchStructural(ctx, query, nodeType, language, limit)
 		if err != nil {
 			return "", fmt.Errorf("search_structural: %w", err)
+		}
+		if !includeSource {
+			results = store.LeanResults(results)
 		}
 		return marshal(results)
 
 	case "list_symbols":
 		fp := strArg(args, "filepath")
-		limit := intArg(args, "limit", 200)
+		limit := intArg(args, "limit", 50)
 		results, err := d.store.ListByPath(ctx, fp, limit)
 		if err != nil {
 			return "", fmt.Errorf("list_symbols: %w", err)
 		}
+		results = store.LeanResults(results)
 		return marshal(results)
 
 	case "get_chunk":
@@ -106,6 +115,16 @@ func strArg(args map[string]any, key string) string {
 		}
 	}
 	return ""
+}
+
+// boolArg extracts a bool argument from the args map, defaulting to def.
+func boolArg(args map[string]any, key string, def bool) bool {
+	if v, ok := args[key]; ok {
+		if b, ok := v.(bool); ok {
+			return b
+		}
+	}
+	return def
 }
 
 // intArg extracts an int argument from the args map, defaulting to def.

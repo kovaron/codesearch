@@ -36,30 +36,32 @@ func ToolDefs(arm ArmName) []anthropic.ToolUnionParam {
 	switch arm {
 	case ArmCodesearch:
 		return append(shared,
-			makeTool("search_semantic", "Vector similarity search over indexed code.",
+			makeTool("search_semantic", "Vector similarity search over indexed code. Use for fuzzy questions (\"what depends on X\", \"find something analogous to Y\"). For literal lookups (exact function name, error string, import path) prefer bash grep — semantic search burns tokens on questions with a literal answer. Returns headers only; set include_source=true to fold source into each hit.",
 				propMap(
 					"query", "string", "Natural language search query.",
-					"limit", "integer", "Max results (default 10).",
+					"limit", "integer", "Max results (default 5).",
+					"include_source", "boolean", "Include each hit's source text inline (default false).",
 				),
 				[]string{"query"},
 			),
-			makeTool("search_structural", "Search code by symbol name, type, and language.",
+			makeTool("search_structural", "Symbol-name lookup by exact match with optional node-type and language filters. Fast and precise — use when you know the symbol name. Returns headers only; set include_source=true to fold source into each hit and skip a separate get_chunk round-trip.",
 				propMap(
 					"query", "string", "Symbol name to search for.",
 					"type", "string", "Node type filter, e.g. function_declaration.",
 					"language", "string", "Language filter, e.g. go.",
-					"limit", "integer", "Max results (default 20).",
+					"limit", "integer", "Max results (default 10).",
+					"include_source", "boolean", "Include each hit's source text inline (default false).",
 				),
 				[]string{"query"},
 			),
-			makeTool("list_symbols", "List all symbols in a file or directory prefix.",
+			makeTool("list_symbols", "List symbols under a file or directory prefix. Returns headers only (path, name, lines); fetch a specific symbol's body with get_chunk.",
 				propMap(
 					"filepath", "string", "File or directory path prefix.",
-					"limit", "integer", "Max results (default 200).",
+					"limit", "integer", "Max results (default 50).",
 				),
 				[]string{"filepath"},
 			),
-			makeTool("get_chunk", "Get a specific named symbol from a file.",
+			makeTool("get_chunk", "Fetch the full source of a named symbol from a file.",
 				propMap(
 					"filepath", "string", "File path containing the symbol.",
 					"name", "string", "Symbol name.",
@@ -74,7 +76,7 @@ func ToolDefs(arm ArmName) []anthropic.ToolUnionParam {
 
 	default: // ArmBaseline
 		return append(shared,
-			makeTool("bash", "Execute a shell command inside the sandbox.",
+			makeTool("bash", "Execute a shell command inside the sandbox. Available binaries: find, grep, sed, awk, cat, ls, wc, head, tail. Use for literal pattern lookups where you know the exact string to grep for.",
 				propMap(
 					"command", "string", "Shell command to run.",
 					"timeout_ms", "integer", "Optional timeout in milliseconds.",

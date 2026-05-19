@@ -18,6 +18,18 @@ type SearchResult struct {
 	Score     float32
 }
 
+// LeanResults returns a copy of rs with each Text field blanked.
+// MCP search/list handlers use this to keep tool output token-cheap;
+// the agent can call get_chunk for any specific symbol it wants in full.
+func LeanResults(rs []SearchResult) []SearchResult {
+	out := make([]SearchResult, len(rs))
+	for i, r := range rs {
+		r.Text = ""
+		out[i] = r
+	}
+	return out
+}
+
 // Store is the interface for the vector/metadata store.
 type Store interface {
 	Upsert(ctx context.Context, filepath string, chunk parser.Chunk, vector []float32) error
