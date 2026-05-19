@@ -3,10 +3,30 @@ package bench
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"time"
 )
+
+// isFinite reports whether x is a finite (non-NaN, non-±Inf) float.
+func isFinite(x float64) bool {
+	return !math.IsInf(x, 0) && !math.IsNaN(x)
+}
+
+// correctnessTally counts how many tasks each arm passed at least once.
+func correctnessTally(pairs []taskPair) (cs, bl, total int) {
+	for _, p := range pairs {
+		total++
+		if p.cs != nil && p.cs.CorrectnessRate > 0 {
+			cs++
+		}
+		if p.bl != nil && p.bl.CorrectnessRate > 0 {
+			bl++
+		}
+	}
+	return cs, bl, total
+}
 
 // Meta is the run-scope metadata embedded in a report.
 type Meta struct {
@@ -71,18 +91,48 @@ func RenderMarkdown(aggs []Aggregated, m Meta) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# codesearch bench — %s\n\n", m.Timestamp.UTC().Format(time.RFC3339))
 
+	// Composite cost ratio across tasks where BOTH arms had a finite score
+	// (i.e. both arms passed CorrectnessRate == 1.0). Composite returns +Inf
+	// when self.CorrectnessRate < 1.0 and GeoMean filters non-finite values.
 	csComps, blComps := []float64{}, []float64{}
+	bothCorrectTasks := 0
 	for _, p := range pairs {
 		if p.cs == nil || p.bl == nil {
 			continue
 		}
-		csComps = append(csComps, Composite(*p.cs, *p.bl))
-		blComps = append(blComps, Composite(*p.bl, *p.cs))
+		sc := Composite(*p.cs, *p.bl)
+		sb := Composite(*p.bl, *p.cs)
+		// Only count tasks where BOTH arms scored finitely — those are the
+		// fair-fight comparisons. Tasks where only one arm succeeded inflate
+		// the geomean of the surviving arm with a 1.0 score and silently
+		// disappear from the loser's geomean.
+		if !isFinite(sc) || !isFinite(sb) {
+			continue
+		}
+		csComps = append(csComps, sc)
+		blComps = append(blComps, sb)
+		bothCorrectTasks++
 	}
 	csOverall := GeoMean(csComps)
 	blOverall := GeoMean(blComps)
-	headline := blOverall / csOverall
-	fmt.Fprintf(&b, "**Headline:** codesearch composite **%.2f×** cheaper than baseline (lower=better).\n\n", headline)
+
+	csTaskWins, blTaskWins, totalTasks := correctnessTally(pairs)
+	fmt.Fprintf(&b, "**Correctness:** codesearch **%d / %d** tasks, baseline **%d / %d** tasks (passed ≥ 1 run).\n\n",
+		csTaskWins, totalTasks, blTaskWins, totalTasks)
+
+	if bothCorrectTasks == 0 {
+		fmt.Fprintln(&b, "**Cost headline:** no task had both arms 100% correct — no fair-fight cost comparison possible. See per-task table.")
+		fmt.Fprintln(&b, "")
+	} else {
+		ratio := blOverall / csOverall
+		if ratio >= 1 {
+			fmt.Fprintf(&b, "**Cost (both-arms-correct, %d / %d tasks):** codesearch **%.2f×** cheaper than baseline.\n\n",
+				bothCorrectTasks, totalTasks, ratio)
+		} else {
+			fmt.Fprintf(&b, "**Cost (both-arms-correct, %d / %d tasks):** baseline **%.2f×** cheaper than codesearch.\n\n",
+				bothCorrectTasks, totalTasks, 1.0/ratio)
+		}
+	}
 
 	fmt.Fprintln(&b, "## Per-task breakdown")
 	fmt.Fprintln(&b, "")

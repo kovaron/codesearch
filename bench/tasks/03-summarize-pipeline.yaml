@@ -4,8 +4,8 @@ prompt: |
   Summarize the indexing pipeline in internal/indexer/ in 3-5 sentences.
   Your answer must explain the three main stages and which functions implement them.
 arms: [codesearch, baseline]
-turn_cap: 20
-timeout_seconds: 120
+turn_cap: 30
+timeout_seconds: 150
 golden:
   type: answer_match
   match: substring

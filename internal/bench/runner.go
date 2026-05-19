@@ -10,10 +10,38 @@ import (
 	"github.com/kovaron/codesearch/internal/store"
 )
 
-const benchSystemPrompt = `You are completing a task in a Go repository at %s.
-Use the provided tools. When done, emit your final answer as plain text and stop.
-Do not explain your reasoning beyond what the task asks for.
-Turn cap: %d.`
+const benchSystemPromptCodesearch = `You are completing a task in a Go repository at %s.
+
+Tool selection:
+- Literal pattern lookups (exact function names, error strings, fixed-format file paths): NO bash here — use search_structural with the exact name, or list_symbols on a path prefix.
+- Fuzzy questions ("what depends on X", "find something similar to Y", "what does this codebase do for Z"): use search_semantic or search_hybrid.
+- "Who calls X" / "what does X call": use trace_path with direction=inbound or outbound. One round-trip instead of multi-grep.
+- To inspect a symbol's body: get_chunk, or set include_source=true on a search call to fold source inline.
+- For multi-file edits: read_file + edit_file are per-file; expect more round-trips than a single sed would take.
+
+Use the provided tools. When done, emit your final answer as plain text and stop. Do not explain your reasoning beyond what the task asks for. Turn cap: %d.`
+
+const benchSystemPromptBaseline = `You are completing a task in a Go repository at %s.
+
+Tool selection:
+- Use bash with grep/find/sed/awk for almost everything. PATH includes /usr/bin and /bin only — no ripgrep, no ast-grep.
+- Literal lookups: grep -rn 'pattern' --include='*.go' (or specific dirs) is fastest.
+- Multi-file edits: a single sed -i (or grep -l | xargs sed) is preferred over many edit_file round-trips.
+- Use read_file / edit_file when you need precise textual replacement in one file.
+
+Use the provided tools. When done, emit your final answer as plain text and stop. Do not explain your reasoning beyond what the task asks for. Turn cap: %d.`
+
+// systemPromptFor returns the arm-specific system prompt with tool routing
+// hints baked in.
+func systemPromptFor(arm ArmName, workdir string, turnCap int) string {
+	switch arm {
+	case ArmCodesearch:
+		return fmt.Sprintf(benchSystemPromptCodesearch, workdir, turnCap)
+	case ArmBaseline:
+		return fmt.Sprintf(benchSystemPromptBaseline, workdir, turnCap)
+	}
+	return fmt.Sprintf(benchSystemPromptCodesearch, workdir, turnCap)
+}
 
 // Runner orchestrates per-task agent execution across two arms.
 type Runner struct {
@@ -47,7 +75,7 @@ func (r *Runner) runOne(ctx context.Context, t *Task, arm ArmName, idx int) RunR
 
 	disp := r.dispatcherFor(arm, workdir, t.TimeoutSeconds)
 
-	system := fmt.Sprintf(benchSystemPrompt, workdir, t.TurnCap)
+	system := systemPromptFor(arm, workdir, t.TurnCap)
 	taskCtx, cancel := context.WithTimeout(ctx, time.Duration(t.TimeoutSeconds)*time.Second)
 	defer cancel()
 

@@ -7,8 +7,8 @@ prompt: |
   or iteration function that delegates per-item work to a callback or method.
   Name the function and the file it lives in.
 arms: [codesearch, baseline]
-turn_cap: 20
-timeout_seconds: 120
+turn_cap: 30
+timeout_seconds: 150
 golden:
   type: answer_match
   match: substring

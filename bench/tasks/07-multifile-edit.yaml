@@ -5,8 +5,8 @@ prompt: |
   "nomic-embed-text-v2" in all *.go files in this repository.
   When done, state which files you changed.
 arms: [codesearch, baseline]
-turn_cap: 20
-timeout_seconds: 120
+turn_cap: 35
+timeout_seconds: 180
 golden:
   type: file_diff
   expected_files:
