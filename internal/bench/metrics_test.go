@@ -70,6 +70,36 @@ func TestComposite_IncorrectIsInfinity(t *testing.T) {
 	}
 }
 
+func TestAggregate_FoldsToolCallsByName(t *testing.T) {
+	t.Parallel()
+	runs := []RunResult{
+		{TaskID: "t1", Arm: "codesearch", TotalTokens: 100, LatencyMs: 1000, ToolCalls: 3, Correct: true,
+			ToolCallsByName: map[string]int{"search_hybrid": 2, "trace_path": 1}},
+		{TaskID: "t1", Arm: "codesearch", TotalTokens: 200, LatencyMs: 2000, ToolCalls: 4, Correct: true,
+			ToolCallsByName: map[string]int{"search_hybrid": 1, "search_semantic": 3}},
+		{TaskID: "t1", Arm: "codesearch", TotalTokens: 999, LatencyMs: 9999, ToolCalls: 9, Truncated: true,
+			ToolCallsByName: map[string]int{"search_hybrid": 5}},
+	}
+	agg := Aggregate(runs)
+	if len(agg) != 1 {
+		t.Fatalf("want 1 agg got %d", len(agg))
+	}
+	a := agg[0]
+	if a.ToolCallsByName == nil {
+		t.Fatal("ToolCallsByName must not be nil")
+	}
+	// All three runs contribute to the sum (including the truncated one).
+	if got := a.ToolCallsByName["search_hybrid"]; got != 8 {
+		t.Errorf("search_hybrid want 8 got %d", got)
+	}
+	if got := a.ToolCallsByName["trace_path"]; got != 1 {
+		t.Errorf("trace_path want 1 got %d", got)
+	}
+	if got := a.ToolCallsByName["search_semantic"]; got != 3 {
+		t.Errorf("search_semantic want 3 got %d", got)
+	}
+}
+
 func TestGeoMean(t *testing.T) {
 	t.Parallel()
 	got := GeoMean([]float64{1, 4, 16})

@@ -17,6 +17,7 @@ type RunResult struct {
 	TotalTokens      int
 	LatencyMs        int64
 	ToolCalls        int
+	ToolCallsByName  map[string]int
 	Turns            int
 	Correct          bool
 	Truncated        bool
@@ -33,6 +34,7 @@ type Aggregated struct {
 	CorrectnessRate float64
 	ValidRuns       int
 	TotalRuns       int
+	ToolCallsByName map[string]int
 }
 
 // Aggregate folds a flat slice of RunResults into per (task, arm) medians.
@@ -49,9 +51,13 @@ func Aggregate(runs []RunResult) []Aggregated {
 	for k, rs := range groups {
 		var tok, lat, tc []float64
 		correct := 0
+		byName := map[string]int{}
 		for _, r := range rs {
 			if r.Correct {
 				correct++
+			}
+			for name, cnt := range r.ToolCallsByName {
+				byName[name] += cnt
 			}
 			if r.Error != "" || r.Truncated {
 				continue
@@ -60,7 +66,7 @@ func Aggregate(runs []RunResult) []Aggregated {
 			lat = append(lat, float64(r.LatencyMs))
 			tc = append(tc, float64(r.ToolCalls))
 		}
-		out = append(out, Aggregated{
+		agg := Aggregated{
 			TaskID:          k.task,
 			Arm:             k.arm,
 			TokensMedian:    median(tok),
@@ -69,7 +75,11 @@ func Aggregate(runs []RunResult) []Aggregated {
 			CorrectnessRate: float64(correct) / float64(len(rs)),
 			ValidRuns:       len(tok),
 			TotalRuns:       len(rs),
-		})
+		}
+		if len(byName) > 0 {
+			agg.ToolCallsByName = byName
+		}
+		out = append(out, agg)
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].TaskID != out[j].TaskID {

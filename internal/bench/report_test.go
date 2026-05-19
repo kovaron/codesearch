@@ -60,6 +60,40 @@ func TestRenderMarkdown_NoFairFightTasks(t *testing.T) {
 	}
 }
 
+func TestRenderMarkdown_IncludesToolUsage(t *testing.T) {
+	t.Parallel()
+	aggs := []Aggregated{
+		{
+			TaskID: "t1", Arm: "codesearch",
+			TokensMedian: 1000, LatencyMedianMs: 1000, ToolCallsMedian: 3,
+			CorrectnessRate: 1.0, ValidRuns: 2, TotalRuns: 2,
+			ToolCallsByName: map[string]int{"search_hybrid": 5, "trace_path": 3},
+		},
+		{
+			TaskID: "t1", Arm: "baseline",
+			TokensMedian: 4000, LatencyMedianMs: 2000, ToolCallsMedian: 6,
+			CorrectnessRate: 1.0, ValidRuns: 2, TotalRuns: 2,
+			ToolCallsByName: map[string]int{"bash": 12},
+		},
+	}
+	md := RenderMarkdown(aggs, Meta{
+		Timestamp: time.Date(2026, 5, 17, 14, 23, 0, 0, time.UTC),
+		Model:     "m", N: 2, Corpus: "self", TurnCap: 20,
+	})
+	if !strings.Contains(md, "## Tool usage") {
+		t.Error("missing '## Tool usage' section")
+	}
+	if !strings.Contains(md, "search_hybrid") {
+		t.Error("missing search_hybrid in tool usage")
+	}
+	if !strings.Contains(md, "trace_path") {
+		t.Error("missing trace_path in tool usage")
+	}
+	if !strings.Contains(md, "bash") {
+		t.Error("missing bash in tool usage")
+	}
+}
+
 func TestRenderJSON_RoundTrips(t *testing.T) {
 	t.Parallel()
 	js := RenderJSON(sampleAggs(), Meta{

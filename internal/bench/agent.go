@@ -36,6 +36,7 @@ type AgentOutput struct {
 	CacheReadTokens  int
 	CacheWriteTokens int
 	ToolCalls        int
+	ToolCallsByName  map[string]int
 	Turns            int
 	Truncated        bool
 	Error            string
@@ -110,6 +111,10 @@ func RunAgent(ctx context.Context, in AgentInput) AgentOutput {
 					continue
 				}
 				out.ToolCalls++
+				if out.ToolCallsByName == nil {
+					out.ToolCallsByName = make(map[string]int)
+				}
+				out.ToolCallsByName[name]++
 				result, derr := in.Dispatcher.Call(ctx, name, args)
 				if derr != nil {
 					result = "ERROR: " + derr.Error()

@@ -9,6 +9,36 @@ import (
 	"time"
 )
 
+// toolUsageSums returns a map of tool→total calls summed across all Aggregated
+// entries for the given arm name.
+func toolUsageSums(aggs []Aggregated, arm string) map[string]int {
+	out := map[string]int{}
+	for _, a := range aggs {
+		if a.Arm != arm {
+			continue
+		}
+		for name, cnt := range a.ToolCallsByName {
+			out[name] += cnt
+		}
+	}
+	return out
+}
+
+// sortedToolNames returns tool names sorted descending by count.
+func sortedToolNames(m map[string]int) []string {
+	names := make([]string, 0, len(m))
+	for n := range m {
+		names = append(names, n)
+	}
+	sort.Slice(names, func(i, j int) bool {
+		if m[names[i]] != m[names[j]] {
+			return m[names[i]] > m[names[j]]
+		}
+		return names[i] < names[j]
+	})
+	return names
+}
+
 // isFinite reports whether x is a finite (non-NaN, non-±Inf) float.
 func isFinite(x float64) bool {
 	return !math.IsInf(x, 0) && !math.IsNaN(x)
@@ -51,14 +81,15 @@ type metaJSON struct {
 }
 
 type aggJSON struct {
-	TaskID          string  `json:"task_id"`
-	Arm             string  `json:"arm"`
-	TokensMedian    float64 `json:"tokens_median"`
-	LatencyMedianMs float64 `json:"latency_median_ms"`
-	ToolCallsMedian float64 `json:"tool_calls_median"`
-	CorrectnessRate float64 `json:"correctness_rate"`
-	ValidRuns       int     `json:"valid_runs"`
-	TotalRuns       int     `json:"total_runs"`
+	TaskID          string         `json:"task_id"`
+	Arm             string         `json:"arm"`
+	TokensMedian    float64        `json:"tokens_median"`
+	LatencyMedianMs float64        `json:"latency_median_ms"`
+	ToolCallsMedian float64        `json:"tool_calls_median"`
+	CorrectnessRate float64        `json:"correctness_rate"`
+	ValidRuns       int            `json:"valid_runs"`
+	TotalRuns       int            `json:"total_runs"`
+	ToolCallsByName map[string]int `json:"tool_calls_by_name,omitempty"`
 }
 
 // RenderJSON serializes aggregates plus run metadata as indented JSON.
@@ -78,6 +109,7 @@ func RenderJSON(aggs []Aggregated, m Meta) string {
 			TokensMedian: a.TokensMedian, LatencyMedianMs: a.LatencyMedianMs,
 			ToolCallsMedian: a.ToolCallsMedian, CorrectnessRate: a.CorrectnessRate,
 			ValidRuns: a.ValidRuns, TotalRuns: a.TotalRuns,
+			ToolCallsByName: a.ToolCallsByName,
 		})
 	}
 	b, _ := json.MarshalIndent(r, "", "  ")
@@ -132,6 +164,21 @@ func RenderMarkdown(aggs []Aggregated, m Meta) string {
 			fmt.Fprintf(&b, "**Cost (both-arms-correct, %d / %d tasks):** baseline **%.2f×** cheaper than codesearch.\n\n",
 				bothCorrectTasks, totalTasks, 1.0/ratio)
 		}
+	}
+
+	// Tool usage tables (one per arm), sorted descending by call count.
+	for _, arm := range []string{"codesearch", "baseline"} {
+		sums := toolUsageSums(aggs, arm)
+		if len(sums) == 0 {
+			continue
+		}
+		fmt.Fprintf(&b, "## Tool usage (%s arm)\n\n", arm)
+		fmt.Fprintln(&b, "| Tool | Total calls |")
+		fmt.Fprintln(&b, "|------|-----:|")
+		for _, name := range sortedToolNames(sums) {
+			fmt.Fprintf(&b, "| %s | %d |\n", name, sums[name])
+		}
+		fmt.Fprintln(&b, "")
 	}
 
 	fmt.Fprintln(&b, "## Per-task breakdown")

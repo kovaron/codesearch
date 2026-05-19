@@ -108,6 +108,7 @@ func (r *Runner) runOne(ctx context.Context, t *Task, arm ArmName, idx int) RunR
 		TotalTokens:      agent.InputTokens + agent.OutputTokens,
 		LatencyMs:        agent.LatencyMs,
 		ToolCalls:        agent.ToolCalls,
+		ToolCallsByName:  agent.ToolCallsByName,
 		Turns:            agent.Turns,
 		Truncated:        agent.Truncated,
 		Correct:          correct,
