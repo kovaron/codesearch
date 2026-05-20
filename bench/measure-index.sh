@@ -254,9 +254,15 @@ MEAN_DAEMON_RSS=$(awk -F, 'NR>1 {sum+=$4; n++} END {if (n>0) printf "%d", sum/n;
 
 QDRANT_DISK=$(qdrant_disk_bytes)
 
-# Files actually indexed (per daemon log)
-INDEXED_FILES=$(grep -c "^[0-9/]* [0-9:]* index " "$LOG" 2>/dev/null || echo 0)
-INDEX_ERRORS=$(grep -c "index error:" "$LOG" 2>/dev/null || echo 0)
+# Files actually indexed (per daemon log). grep -c always prints a count on
+# stdout (including 0 on no match), but it returns exit 1 when count == 0 —
+# which used to trigger the `|| echo 0` fallback and produce a "0\n0" value
+# in the substitution. Drop the fallback; grep -c is enough on its own.
+# `2>/dev/null || true` keeps a missing log file from killing the script.
+INDEXED_FILES=$(grep -c "^[0-9/]* [0-9:]* index " "$LOG" 2>/dev/null || true)
+INDEX_ERRORS=$(grep -c "index error:" "$LOG" 2>/dev/null || true)
+INDEXED_FILES=${INDEXED_FILES:-0}
+INDEX_ERRORS=${INDEX_ERRORS:-0}
 
 # Throughput (use bc-free awk arithmetic)
 POINTS_PER_SEC=$(awk -v p=$NEW_POINTS -v w=$WALL 'BEGIN{if(w>0)printf "%.1f", p/w; else print "0"}')
