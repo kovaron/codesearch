@@ -125,8 +125,19 @@ if ! kill -0 "$DPID" 2>/dev/null; then
   exit 1
 fi
 
-# Find ollama pid (best-effort; might be inside Docker on some setups)
-OPID=$(pgrep -x ollama | head -1 || echo "")
+# Ollama isn't one process — `ollama serve` spawns runner subprocesses that
+# actually hold the model weights. Sum RSS across every process whose
+# command line contains "ollama" so we capture the runners too.
+ollama_total_rss_kb() {
+  pgrep -f ollama 2>/dev/null \
+    | xargs -I{} ps -o rss= -p {} 2>/dev/null \
+    | awk '{sum+=$1} END {print sum+0}'
+}
+ollama_total_cpu() {
+  pgrep -f ollama 2>/dev/null \
+    | xargs -I{} ps -o pcpu= -p {} 2>/dev/null \
+    | awk '{sum+=$1} END {printf "%.1f", sum+0}'
+}
 
 # Sample loop
 echo "timestamp_unix,elapsed_s,daemon_cpu,daemon_rss_kb,daemon_vsz_kb,ollama_cpu,ollama_rss_kb,qdrant_points" > "$CSV"
@@ -150,12 +161,8 @@ while true; do
 
   # macOS ps: %cpu rss vsz
   read DCPU DRSS DVSZ < <(ps -o pcpu=,rss=,vsz= -p "$DPID" 2>/dev/null || echo "0 0 0")
-  if [[ -n "$OPID" ]] && kill -0 "$OPID" 2>/dev/null; then
-    read OCPU ORSS _ < <(ps -o pcpu=,rss=,vsz= -p "$OPID" 2>/dev/null || echo "0 0 0")
-  else
-    OCPU=0
-    ORSS=0
-  fi
+  ORSS=$(ollama_total_rss_kb)
+  OCPU=$(ollama_total_cpu)
 
   POINTS=$(qdrant_points)
 
@@ -242,8 +249,12 @@ cat > "$SUMMARY" <<EOF
 | Throughput | **${POINTS_PER_SEC} chunks/s**, **${FILES_PER_SEC} files/s** |
 | Daemon peak RSS | **$(awk -v k=$PEAK_DAEMON_RSS 'BEGIN{printf "%.1f MB", k/1024}')** |
 | Daemon mean CPU | **${MEAN_DAEMON_CPU}%** raw (${MEAN_DAEMON_CPU_NORM}% of ${NCPU}-core box) |
-| Ollama peak RSS | $(awk -v k=$PEAK_OLLAMA_RSS 'BEGIN{printf "%.1f MB", k/1024}') |
+| Ollama peak RSS (sum) | $(awk -v k=$PEAK_OLLAMA_RSS 'BEGIN{printf "%.1f MB", k/1024}') ¹ |
 | Qdrant on-disk (this project) | $(awk -v b=$QDRANT_DISK 'BEGIN{if(b>0)printf "%.1f MB", b/1048576; else print "n/a (qdrant version too old)"}') |
+
+¹ On macOS, model weights are memory-mapped and only count toward RSS for
+pages actually faulted in. Treat Ollama RSS as a **lower bound** — the
+on-disk model size is the better upper bound (\`du -sh ~/.ollama/models\`).
 
 ## Run config
 
