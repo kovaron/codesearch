@@ -75,6 +75,39 @@ qdrant_points() {
     || echo 0
 }
 
+# Qdrant on-disk size for the collection (bytes; returns 0 when unavailable)
+qdrant_disk_bytes() {
+  curl -sf "http://localhost:6333/collections/$PROJECT" 2>/dev/null \
+    | python3 -c '
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    r = d.get("result", {})
+    # Qdrant >=1.10 returns disk_data_size; older versions omit it.
+    print(int(r.get("disk_data_size", 0)))
+except Exception:
+    print(0)
+' 2>/dev/null || echo 0
+}
+
+# Count indexable source files in the target repo (best-effort heuristic).
+count_source_files() {
+  local repo="$1"
+  find "$repo" \
+    -path "$repo/.git" -prune -o \
+    -path "$repo/node_modules" -prune -o \
+    -path "$repo/vendor" -prune -o \
+    -path "$repo/.codesearch" -prune -o \
+    -type f \( -name '*.go' -o -name '*.ts' -o -name '*.tsx' -o -name '*.java' -o -name '*.py' -o -name '*.js' -o -name '*.rs' \) \
+    -print 2>/dev/null | wc -l | tr -d ' '
+}
+
+# Total ncpu (for normalising CPU% — `ps pcpu` is per-core × 100, so a fully
+# pegged 8-core box reports up to 800%)
+NCPU=$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 1)
+SRC_FILES=$(count_source_files "$REPO")
+echo "source files in repo: $SRC_FILES across ${NCPU} cores"
+
 INITIAL_POINTS=$(qdrant_points)
 echo "initial qdrant points for project $PROJECT: $INITIAL_POINTS"
 
@@ -133,12 +166,19 @@ while true; do
   if (( ORSS > PEAK_OLLAMA_RSS )); then PEAK_OLLAMA_RSS=$ORSS; fi
   SAMPLES=$((SAMPLES + 1))
 
-  # Stability check: same points for 30s = done
+  # Done detection — two signals:
+  #   1. Daemon logs "daemon: watching" once initial walk finishes (authoritative).
+  #   2. Qdrant point count stable for 30s with at least one new point ingested
+  #      (fallback if log marker doesn't appear).
+  if grep -q "daemon: watching" "$LOG" 2>/dev/null; then
+    echo "daemon emitted 'watching' marker at elapsed=${ELAPSED}s — initial walk complete"
+    break
+  fi
   if [[ "$POINTS" == "$LAST_POINTS" ]]; then
     if (( STABLE_SINCE == 0 )); then
       STABLE_SINCE=$NOW
     elif (( NOW - STABLE_SINCE >= 30 && ELAPSED >= 30 && POINTS > INITIAL_POINTS )); then
-      echo "index stable at $POINTS points for ${STABLE_SINCE}s — assuming first pass done"
+      echo "index stable at $POINTS points for ${STABLE_SINCE}s — assuming first pass done (fallback)"
       break
     fi
   else
@@ -167,6 +207,19 @@ trap - EXIT
 MEAN_DAEMON_CPU=$(awk -F, 'NR>1 {sum+=$3; n++} END {if (n>0) printf "%.1f", sum/n; else print "0"}' "$CSV")
 MEAN_DAEMON_RSS=$(awk -F, 'NR>1 {sum+=$4; n++} END {if (n>0) printf "%d", sum/n; else print "0"}' "$CSV")
 
+QDRANT_DISK=$(qdrant_disk_bytes)
+
+# Files actually indexed (per daemon log)
+INDEXED_FILES=$(grep -c "^[0-9/]* [0-9:]* index " "$LOG" 2>/dev/null || echo 0)
+INDEX_ERRORS=$(grep -c "index error:" "$LOG" 2>/dev/null || echo 0)
+
+# Throughput (use bc-free awk arithmetic)
+POINTS_PER_SEC=$(awk -v p=$NEW_POINTS -v w=$WALL 'BEGIN{if(w>0)printf "%.1f", p/w; else print "0"}')
+FILES_PER_SEC=$(awk -v f=$SRC_FILES -v w=$WALL 'BEGIN{if(w>0)printf "%.2f", f/w; else print "0"}')
+
+# Normalise CPU: ps reports per-core%, max = ncpu × 100. Show both raw and normalised.
+MEAN_DAEMON_CPU_NORM=$(awk -v c=$MEAN_DAEMON_CPU -v n=$NCPU 'BEGIN{printf "%.1f", c/n}')
+
 # Summary
 cat > "$SUMMARY" <<EOF
 # codesearch index measurement — $TS
@@ -175,27 +228,49 @@ cat > "$SUMMARY" <<EOF
 
 - path: \`$REPO\`
 - project: \`$PROJECT\`
+- source files (heuristic): **$SRC_FILES**
 
-## Result
+## Headline
 
-- wall time: **${WALL}s**
-- points indexed: **$NEW_POINTS** (final $FINAL_POINTS, initial $INITIAL_POINTS)
+| Metric | Value |
+|---|---|
+| Wall time | **${WALL}s** |
+| Files indexed (daemon log) | **$INDEXED_FILES** of $SRC_FILES discoverable |
+| Index errors | $INDEX_ERRORS |
+| Indexed chunks (Qdrant points) | **$NEW_POINTS** |
+| Avg chunks per file | $(awk -v p=$NEW_POINTS -v f=$INDEXED_FILES 'BEGIN{if(f>0)printf "%.1f", p/f; else print "n/a"}') |
+| Throughput | **${POINTS_PER_SEC} chunks/s**, **${FILES_PER_SEC} files/s** |
+| Daemon peak RSS | **$(awk -v k=$PEAK_DAEMON_RSS 'BEGIN{printf "%.1f MB", k/1024}')** |
+| Daemon mean CPU | **${MEAN_DAEMON_CPU}%** raw (${MEAN_DAEMON_CPU_NORM}% of ${NCPU}-core box) |
+| Ollama peak RSS | $(awk -v k=$PEAK_OLLAMA_RSS 'BEGIN{printf "%.1f MB", k/1024}') |
+| Qdrant on-disk (this project) | $(awk -v b=$QDRANT_DISK 'BEGIN{if(b>0)printf "%.1f MB", b/1048576; else print "n/a (qdrant version too old)"}') |
+
+## Run config
+
+- model: \`nomic-embed-text\` (Ollama, 768-dim)
+- machine: $(uname -mns) — ${NCPU} cores
+- qdrant: $(curl -sf http://localhost:6333/ 2>/dev/null | python3 -c 'import sys,json; print(json.load(sys.stdin).get("version","?"))' 2>/dev/null || echo "?")
+- ollama: $(curl -sf http://localhost:11434/ 2>/dev/null | head -1 || echo "?")
+
+## Raw
+
+- final Qdrant points: $FINAL_POINTS (was $INITIAL_POINTS at start)
 - samples taken: $SAMPLES (every 2s)
-
-## codesearch daemon resource use
-
-- peak RSS: **$(awk -v k=$PEAK_DAEMON_RSS 'BEGIN{printf "%.1f MB", k/1024}')**
-- mean CPU: **${MEAN_DAEMON_CPU}%**
-- mean RSS: $(awk -v k=$MEAN_DAEMON_RSS 'BEGIN{printf "%.1f MB", k/1024}')
-
-## Ollama resource use
-
-- peak RSS: $(awk -v k=$PEAK_OLLAMA_RSS 'BEGIN{printf "%.1f MB", k/1024}')
+- mean daemon RSS: $(awk -v k=$MEAN_DAEMON_RSS 'BEGIN{printf "%.1f MB", k/1024}')
 
 ## Files
 
 - \`daemon.log\` — daemon stderr/stdout
 - \`samples.csv\` — per-sample raw ps + qdrant point count
+
+## Share this
+
+\`\`\`
+Indexed $SRC_FILES files into $NEW_POINTS chunks in ${WALL}s
+on ${NCPU} cores. Daemon peak ${PEAK_DAEMON_RSS}KB RSS,
+mean ${MEAN_DAEMON_CPU_NORM}% of cpu. Throughput: ${POINTS_PER_SEC} chunks/s.
+Ollama (nomic-embed-text) peak ${PEAK_OLLAMA_RSS}KB RSS.
+\`\`\`
 EOF
 
 echo
