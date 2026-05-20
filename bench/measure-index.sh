@@ -23,13 +23,32 @@
 
 set -euo pipefail
 
-if [[ $# -lt 1 ]]; then
-  echo "Usage: $0 <repo-path> [project-name]" >&2
+CLEAN=0
+ARGS=()
+for arg in "$@"; do
+  case "$arg" in
+    --clean) CLEAN=1 ;;
+    -h|--help)
+      cat <<USAGE
+Usage: $0 [--clean] <repo-path> [project-name]
+
+  --clean   Delete the Qdrant collection for <project-name> before indexing,
+            so the measurement starts from zero. Stops any running daemon first.
+
+  CODESEARCH=<path>   Override the codesearch binary (default: 'codesearch' from PATH).
+USAGE
+      exit 0 ;;
+    *) ARGS+=("$arg") ;;
+  esac
+done
+
+if [[ ${#ARGS[@]} -lt 1 ]]; then
+  echo "Usage: $0 [--clean] <repo-path> [project-name]" >&2
   exit 2
 fi
 
-REPO=$(cd "$1" && pwd)
-PROJECT="${2:-$(basename "$REPO")}"
+REPO=$(cd "${ARGS[0]}" && pwd)
+PROJECT="${ARGS[1]:-$(basename "$REPO")}"
 CODESEARCH="${CODESEARCH:-codesearch}"
 
 if ! command -v "$CODESEARCH" >/dev/null 2>&1; then
@@ -45,6 +64,25 @@ fi
 if ! curl -sf -o /dev/null http://localhost:11434/; then
   echo "Ollama not reachable on http://localhost:11434" >&2
   exit 1
+fi
+
+# Optional clean: stop any running daemon and drop the existing collection
+# so the measurement starts from a true zero.
+if (( CLEAN == 1 )); then
+  echo "--clean: stopping any running codesearch daemon..."
+  pkill -f 'codesearch daemon' 2>/dev/null || true
+  sleep 1
+  echo "--clean: deleting Qdrant collection '$PROJECT'..."
+  HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE "http://localhost:6333/collections/$PROJECT")
+  case "$HTTP_CODE" in
+    200|404)
+      echo "--clean: collection dropped (http $HTTP_CODE)"
+      ;;
+    *)
+      echo "--clean: unexpected http $HTTP_CODE while deleting collection — continuing anyway" >&2
+      ;;
+  esac
+  sleep 1
 fi
 
 # Ensure .codesearch.yaml exists in target
